@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 社労士事務所の管理者ユーザー
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+/// 顧問先が入力した1回分の診断（ヒヤリングシート全項目）
+model Diagnosis {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // --- 基本情報 ---
+  companyName      String
+  corporateNumber  String? // 法人番号
+  address          String
+  industry         String
+  industryCategory String // 中小企業判定用の業種区分
+  orgType          String // "法人" | "個人事業"
+  contactName      String? // ご担当者名
+  contactTel       String? // 連絡先TEL
+  contactEmail     String? // メールアドレス
+  hasBranch        Boolean @default(false) // 支店の有無
+  branchNote       String? // 支店名など
+
+  // --- Q1 従業員（全体=A+B+C+D）---
+  employeeCount         Int // 全体
+  regularStaffCount     Int @default(0) // A 正規社員
+  permanentInsuredCount Int @default(0) // B 雇用保険加入の無期契約労働者
+  fixedTermInsuredCount Int @default(0) // C 雇用保険加入の有期契約労働者
+  under20hUninsuredCount Int @default(0) // D 週20時間未満で雇用保険適用外
+  under20hFixedTermCount Int @default(0) // Dのうち週20時間未満の有期契約
+  inHouseMinWage        Int // 会社内の最低賃金（円）
+
+  // --- 労務・コンプライアンス ---
+  hasLaborInsurance      Boolean // 労災保険加入
+  hasEmploymentIns       Boolean // 雇用保険加入
+  hasSocialInsurance     Boolean // 社会保険加入
+  agreement36Status      String // 36協定: "届出済み"|"作成済み未届"|"未作成"
+  agreement36Date        String? // 36協定の届出日（届出済みの場合）
+  workRulesStatus        String // 就業規則: "届出済み"|"作成済み未届"|"未作成"
+  hasWageLedger          Boolean // 賃金台帳整備
+  hasAttendanceBook      Boolean // 出勤簿整備
+  hasEmployeeRoster      Boolean // 労働者名簿整備
+  employmentContractsStatus String  @default("はい") // 雇用契約書: "はい"|"いいえ"|"その他"
+  employmentContractsNote   String? // 雇用契約書「その他」の内容
+
+  // --- 就業規則がない場合の勤務条件 ---
+  workDays   String? // 勤務日
+  holidays   String? // 休日
+  vacations  String? // 休暇
+  workHours  String? // 労働時間
+  breakTime  String? // 休憩
+  // 手当（名称＋月額を3組）
+  allowance1Name   String?
+  allowance1Amount String?
+  allowance2Name   String?
+  allowance2Amount String?
+  allowance3Name   String?
+  allowance3Amount String?
+
+  // --- 賃金 ---
+  payClosingDay    String? // 締め日
+  payDay           String? // 支給日
+  hasRaiseSystem   Boolean @default(false) // 昇給制度の有無
+  raiseMonth       String? // 昇給月
+  plannedWageRaise Int // 賃上げ予定額（円）
+  wageRaiseHeadcount Int // 賃上げ予定人数
+
+  // --- 定年・賞与・退職金 ---
+  retirementSystem      String? // 定年: "65歳"|"60歳継続雇用"|"定年なし"
+  hasBonus              Boolean @default(false)
+  bonusSummer           String? // 夏季賞与（月）
+  bonusWinter           String? // 冬季賞与（月）
+  hasRetirementAllowance Boolean @default(false) // 退職金制度
+
+  // --- 設備投資 ---
+  willInvestEquipment Boolean // 設備導入予定
+  equipmentName       String? // 設備名
+  equipmentPrice      Int? // 設備価格（円）
+  equipmentVendor     String? // 購入先
+  equipmentPurpose    String? // 導入目的
+  productivityEffect  String? // 生産性向上効果
+
+  // --- 正社員転換 ---
+  plannedConversions Int // 正社員転換予定人数
+  conversionDate     String? // 転換予定日
+
+  // --- 状況・不支給リスク関連 ---
+  pastSubsidies        String? // 過去に申請した助成金
+  sharoshiContract     String  @default("なし") // 社労士契約: "なし"|"顧問"|"スポット"
+  companyReasonLeavers Int @default(0) // 直近6か月の会社都合離職者数
+  over60Insured        Int @default(0) // 60歳以上の雇用保険加入者数
+  over50FixedTerm      Int @default(0) // 50歳以上の有期契約労働者数
+  noFraudPast3y        Boolean @default(true) // 過去3年間に不正受給なし
+  noLaborLawViolation  Boolean @default(true) // 過去1年間に法令違反なし
+
+  // --- 取組予定（判定補助）---
+  willImproveWorktime  Boolean @default(false)
+  canPrepareCareerPlan Boolean @default(false)
+  canReviseWorkRules   Boolean @default(false)
+
+  result DiagnosisResult?
+}
+
+/// 診断結果（各助成金の判定 JSON と総合ランク）
+model DiagnosisResult {
+  id            String    @id @default(cuid())
+  diagnosis     Diagnosis @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+  diagnosisId   String    @unique
+  overallRank   String // "A" | "B" | "C"
+  eligibleCount Int
+  resultJson    String
+  createdAt     DateTime  @default(now())
+}
+
+/// 操作ログ
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  targetId  String?
+  ip        String?
+  createdAt DateTime @default(now())
+}

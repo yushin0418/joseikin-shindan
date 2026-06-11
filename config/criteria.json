@@ -1,0 +1,64 @@
+{
+  "version": "2025-04",
+  "disclaimer": "本ファイルの数値・条件は暫定の既定値です。助成金は毎年改正されるため、申請前に必ず最新の交付要領で確認し、本ファイルを更新してください。システムは要領に明記されない事項を推測しません。",
+  "updatedAt": "2025-04-21",
+
+  "gyomukaizen": {
+    "label": "業務改善助成金",
+    "smeMaxRegularEmployeesByCategory": {
+      "小売業": 50,
+      "サービス業": 100,
+      "卸売業": 100,
+      "製造業その他": 300,
+      "その他": 300
+    },
+    "minWageGapYen": 50,
+    "requireWageRaisePlan": true,
+    "requireProductivityInvestment": true,
+    "requiredDocs": [
+      "交付申請書・事業実施計画書",
+      "賃金台帳（事業場内最低賃金の確認）",
+      "労働者名簿",
+      "就業規則または賃金規定（引上げ規定）",
+      "設備等の見積書（原則相見積り）",
+      "登記事項証明書（法人）／開業届（個人）"
+    ]
+  },
+
+  "hatarakikata": {
+    "label": "働き方改革推進支援助成金",
+    "require36Agreement": true,
+    "requireWorktimeImprovement": true,
+    "requireEquipmentInvestment": true,
+    "requiredDocs": [
+      "交付申請書・事業実施計画書",
+      "36協定届の写し",
+      "就業規則",
+      "賃金台帳・労働者名簿・出勤簿",
+      "取組（設備・研修・コンサル等）の見積書"
+    ]
+  },
+
+  "careerUp": {
+    "label": "キャリアアップ助成金（正社員化コース）",
+    "minWageIncreaseRate": 0.03,
+    "requireFixedTermEmployee": true,
+    "requireConversionPlan": true,
+    "requireRulesRevision": true,
+    "requiredDocs": [
+      "キャリアアップ計画書",
+      "支給申請書",
+      "就業規則（正社員転換制度の規定）",
+      "対象労働者の雇用契約書・転換辞令",
+      "賃金台帳・出勤簿（転換前後6か月分）",
+      "雇用保険適用事業所設置届"
+    ]
+  },
+
+  "commonRisks": [
+    "交付決定前に設備の発注・購入・支払い、または取組・転換を実施すると対象外（事前着手の禁止）。",
+    "過去3年以内に助成金の不正受給がある場合は不支給。",
+    "過去1年以内に労働関係法令の重大な違反がある場合は不支給。",
+    "申請後の賃金引下げ・解雇等は支給に影響する場合がある。"
+  ]
+}
