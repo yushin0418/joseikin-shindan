@@ -110,20 +110,23 @@ describe("業務改善助成金", () => {
   });
 });
 
-describe("働き方改革推進支援助成金", () => {
-  it("36協定が未作成なら×", () => {
-    const r = runDiagnosis({ ...base, agreement36Status: "未作成" });
-    expect(get("hatarakikata", r).status).toBe("×");
+describe("働き方改革推進支援助成金（労働時間短縮・年休促進支援コース）", () => {
+  it("中小企業＋労災＋成果目標＋改善事業で○", () => {
+    expect(get("hatarakikata").status).toBe("○");
   });
 
-  it("36協定が作成済み未届でも前提未充足で×", () => {
-    const r = runDiagnosis({ ...base, agreement36Status: "作成済み未届" });
-    expect(get("hatarakikata", r).status).toBe("×");
+  it("労災保険が未加入だと○にならない", () => {
+    const r = runDiagnosis({ ...base, hasLaborInsurance: false });
+    expect(get("hatarakikata", r).status).not.toBe("○");
   });
 
-  it("労働時間改善の取組予定が無ければ△", () => {
+  it("成果目標（労働時間改善）の予定が無ければ△", () => {
     const r = runDiagnosis({ ...base, willImproveWorktime: false });
     expect(get("hatarakikata", r).status).toBe("△");
+  });
+
+  it("助成額の目安（補助率）が出力される", () => {
+    expect(get("hatarakikata").estimatedAmount).toContain("補助率");
   });
 });
 
@@ -150,6 +153,35 @@ describe("不支給リスク（コンプライアンス）", () => {
   it("会社都合離職者がいるとリスクに人数付きで表示される", () => {
     const r = runDiagnosis({ ...base, companyReasonLeavers: 2 });
     expect(get("careerUp", r).risks.some((x) => x.includes("会社都合離職者が2名"))).toBe(true);
+  });
+});
+
+describe("想定助成額・出典（要領準拠）", () => {
+  it("業務改善助成金：案内の計算例（90円・8名・30人未満・最賃1040）で450万円", () => {
+    const r = runDiagnosis({
+      ...base,
+      employeeCount: 8,
+      inHouseMinWage: 1040,
+      plannedWageRaise: 90,
+      wageRaiseHeadcount: 8,
+      equipmentPrice: 6000000,
+    });
+    const g = get("gyomukaizen", r);
+    expect(g.estimatedAmount).toContain("4,500,000");
+    expect(g.source).toContain("業務改善助成金");
+  });
+
+  it("キャリアアップ：中小・有期→正規の支給額目安が出る", () => {
+    const g = get("careerUp");
+    expect(g.estimatedAmount).toContain("中小企業");
+    expect(g.source).toContain("キャリアアップ");
+  });
+
+  it("3助成金すべてに出典が付く", () => {
+    const r = runDiagnosis(base);
+    for (const g of r.grants) {
+      expect(g.source && g.source.length > 0).toBe(true);
+    }
   });
 });
 

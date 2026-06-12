@@ -22,17 +22,22 @@ export interface Criteria {
   };
   hatarakikata: {
     label: string;
-    require36Agreement: boolean;
-    requireWorktimeImprovement: boolean;
-    requireEquipmentInvestment: boolean;
+    course: string;
+    fiscalYear: string;
+    source: string;
+    subsidyRate: number;
+    subsidyRateSmall: number;
+    goalCaps: Record<string, number>;
     requiredDocs: string[];
   };
   careerUp: {
     label: string;
+    fiscalYear: string;
+    source: string;
     minWageIncreaseRate: number;
-    requireFixedTermEmployee: boolean;
-    requireConversionPlan: boolean;
-    requireRulesRevision: boolean;
+    annualApplicantCap: number;
+    amounts: Record<string, Record<string, { 重点支援: number; 上記以外: number }>>;
+    additions: Record<string, { 中小企業: number; 大企業: number }>;
     requiredDocs: string[];
   };
   commonRisks: string[];
