@@ -395,7 +395,7 @@ export function DiagnoseForm() {
         <Text label="転換予定日" type="date" value={form.conversionDate} onChange={(v) => set("conversionDate", v)} />
       </Section>
 
-      <Section title="働き方改革で取り組みたいこと（あてはまるものを選択）">
+      <Section title="働き方改革で取り組みたいこと（任意・わからなければ未選択でOK）">
         <Check label="残業（時間外労働）を減らしたい" checked={form.hatarakiGoal1} onChange={(v) => set("hatarakiGoal1", v)} />
         <Check label="有給休暇を取りやすくしたい（計画的付与・時間単位など）" checked={form.hatarakiGoal2} onChange={(v) => set("hatarakiGoal2", v)} />
       </Section>

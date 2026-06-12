@@ -257,11 +257,11 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   if (input.hatarakiGoal1) wants.push("残業（時間外労働）の削減 → 成果目標①");
   if (input.hatarakiGoal2) wants.push("有給休暇の取得促進 → 成果目標②③");
   if (input.hatarakiGoal3) wants.push("時間単位年休＋特別休暇 → 成果目標③");
-  const hasGoal = wants.length > 0;
-  if (hasGoal) {
+  // 「取り組みたいこと」は任意（未選択でも、成果目標は社労士が設定するため判定は下げない）
+  if (wants.length > 0) {
     reasons.push(`取り組みたいこと：${wants.join("／")}（具体的な成果目標は社労士が設定）`);
   } else {
-    shortfalls.push("働き方改革で取り組みたいこと（残業削減・有給取得促進 など）が未設定");
+    reasons.push("取り組みたいことは未選択（任意。成果目標は社労士が設定します）");
   }
 
   // 改善事業（設備・機器・研修・コンサル等）
@@ -293,7 +293,7 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   risks.push("成果目標が未達の場合、支給額の減額または不支給となる。");
   risks.push("申請期限：交付申請は令和8年11月30日（予算により早期締切あり）、事業完了は令和9年1月31日。");
 
-  const metAll = isSme && input.hasLaborInsurance && hasGoal && hasInvest && workRulesExists(input);
+  const metAll = isSme && input.hasLaborInsurance && hasInvest && workRulesExists(input);
   const status: Status = metAll ? "○" : "△";
 
   if (status === "○") {
@@ -301,7 +301,6 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出（令和8年11月30日まで）");
   } else {
     if (!input.hasLaborInsurance) actions.push("労災保険の適用状況を確認する");
-    if (!hasGoal) actions.push("残業削減・有給取得促進など、取り組みたいことを選ぶ");
     if (!hasInvest) actions.push("改善事業（機器・研修・コンサル等）を具体化する");
     if (!workRulesExists(input)) actions.push("就業規則・年次有給休暇管理簿を整備する");
   }
