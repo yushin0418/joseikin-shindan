@@ -14,6 +14,7 @@ export interface Criteria {
     rate: { boundaryYen: number; below: number; atOrAbove: number };
     smallEmployerMaxEmployees: number;
     smeMaxRegularEmployeesByCategory: Record<string, number>;
+    smeMaxCapitalByCategory: Record<string, number>;
     courses: Record<
       string,
       { label: string; minRaise: number; caps: { maxHc: number; normal: number; small: number }[] }
@@ -27,7 +28,9 @@ export interface Criteria {
     source: string;
     subsidyRate: number;
     subsidyRateSmall: number;
-    goalCaps: Record<string, number>;
+    goal1CapsByType: Record<string, number>;
+    goal2Cap: number;
+    goal3Cap: number;
     requiredDocs: string[];
   };
   careerUp: {

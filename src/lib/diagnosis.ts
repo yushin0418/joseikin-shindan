@@ -44,6 +44,21 @@ function workRulesExists(input: DiagnosisInput): boolean {
   return input.workRulesStatus !== "未作成";
 }
 
+/** 中小企業判定（業種区分ごとに 資本金以下 OR 従業員以下 で該当） */
+function smeInfo(input: DiagnosisInput, g: Criteria["gyomukaizen"]) {
+  const empMax =
+    g.smeMaxRegularEmployeesByCategory[input.industryCategory] ??
+    g.smeMaxRegularEmployeesByCategory["その他"];
+  const capMax =
+    g.smeMaxCapitalByCategory[input.industryCategory] ??
+    g.smeMaxCapitalByCategory["その他"];
+  const byEmp = input.employeeCount <= empMax;
+  const byCap = input.capitalYen > 0 && input.capitalYen <= capMax;
+  return { isSme: byEmp || byCap, empMax, capMax, byEmp, byCap };
+}
+
+const man = (yen: number) => `${(yen / 10000).toLocaleString()}万円`;
+
 /** 入力からコンプライアンス系の不支給リスクを抽出（全助成金共通で付与） */
 function complianceRisks(input: DiagnosisInput): string[] {
   const r: string[] = [];
@@ -93,28 +108,36 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
   const actions: string[] = [];
   let estimatedAmount: string | undefined;
 
-  // 1) 中小企業判定（業種区分 × 従業員数。※本来は資本金基準も併用）
-  const smeMax =
-    g.smeMaxRegularEmployeesByCategory[input.industryCategory] ??
-    g.smeMaxRegularEmployeesByCategory["その他"];
-  const isSme = input.employeeCount <= smeMax;
+  // 1) 中小企業判定（業種区分ごとに 資本金以下 OR 従業員以下）
+  const sme = smeInfo(input, g);
+  const isSme = sme.isSme;
   if (isSme) {
-    reasons.push(`中小企業に該当（${input.industryCategory}：従業員 ${input.employeeCount}名 ≦ ${smeMax}名）`);
+    reasons.push(
+      `中小企業に該当（${input.industryCategory}：従業員${input.employeeCount}名≦${sme.empMax}名${sme.byCap ? `／資本金${man(input.capitalYen)}≦${man(sme.capMax)}` : ""}）`,
+    );
   } else {
     shortfalls.push(
-      `中小企業の規模要件を超過の可能性（${input.industryCategory}：${input.employeeCount}名 > ${smeMax}名）。※資本金基準でも判定されるため要確認`,
+      `中小企業の規模要件を超過の可能性（${input.industryCategory}：従業員${sme.empMax}名・資本金${man(sme.capMax)}のいずれも超過）`,
     );
   }
 
   // 2) 事業場内最低賃金が地域別最低賃金「未満」であること（要領上の対象要件）
-  if (input.inHouseMinWage > 0) {
-    reasons.push(`事業場内最低賃金 ${input.inHouseMinWage.toLocaleString()}円`);
-  } else {
+  let wageEligible = true;
+  if (input.inHouseMinWage <= 0) {
     shortfalls.push("事業場内最低賃金が未入力（追加確認が必要）");
+  } else if (input.regionalMinWage <= 0) {
+    reasons.push(`事業場内最低賃金 ${input.inHouseMinWage.toLocaleString()}円`);
+    shortfalls.push("地域別最低賃金が未入力のため「事業場内＜地域別」を判定できません（社労士が照合）");
+  } else if (input.inHouseMinWage < input.regionalMinWage) {
+    reasons.push(
+      `事業場内最低賃金${input.inHouseMinWage.toLocaleString()}円 ＜ 地域別最低賃金${input.regionalMinWage.toLocaleString()}円（対象要件を充足）`,
+    );
+  } else {
+    wageEligible = false;
+    shortfalls.push(
+      `事業場内最低賃金${input.inHouseMinWage.toLocaleString()}円が地域別最低賃金${input.regionalMinWage.toLocaleString()}円以上です。本助成金は事業場内最賃が地域別最賃「未満」であることが要件のため、対象外の可能性`,
+    );
   }
-  shortfalls.push(
-    "事業場内最低賃金が令和8年度の地域別最低賃金「未満」であることが要件。社労士が最新の地域別最低賃金と照合して確認（システム未判定）",
-  );
 
   // 3) 賃上げ予定（50円以上）→ コース判定
   const course = pickGyomukaizenCourse(input.plannedWageRaise, g);
@@ -167,7 +190,7 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
   if (!input.hasWageLedger) risks.push("賃金台帳が未整備だと事業場内最低賃金の確認ができず申請に支障。");
 
   // ステータス決定
-  const metAll = isSme && hasRaise && hasInvest;
+  const metAll = isSme && hasRaise && hasInvest && wageEligible;
   const noneCore = !hasRaise && !hasInvest;
   const status: Status = noneCore ? "×" : decideStatus(metAll, false);
 
@@ -209,10 +232,7 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   let estimatedAmount: string | undefined;
 
   // 対象事業主：労災適用 ＋ 中小企業（本コースは中小企業限定）
-  const smeMax =
-    c.gyomukaizen.smeMaxRegularEmployeesByCategory[input.industryCategory] ??
-    c.gyomukaizen.smeMaxRegularEmployeesByCategory["その他"];
-  const isSme = input.employeeCount <= smeMax;
+  const isSme = smeInfo(input, c.gyomukaizen).isSme;
 
   if (input.hasLaborInsurance) {
     reasons.push("労災保険の適用事業主（本コースの対象要件を充足）");
@@ -220,9 +240,9 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("労災保険の適用が確認できません（労災適用の中小企業事業主が対象）");
   }
   if (isSme) {
-    reasons.push(`中小企業に該当（${input.industryCategory}：従業員 ${input.employeeCount}名 ≦ ${smeMax}名）`);
+    reasons.push("中小企業に該当（本コースの対象）");
   } else {
-    shortfalls.push(`中小企業の規模要件を超過の可能性（本コースは中小企業限定。資本金基準でも要確認）`);
+    shortfalls.push("中小企業の規模要件を超過の可能性（本コースは中小企業限定。資本金・従業員で要確認）");
   }
 
   // 年休管理簿・就業規則等の整備（年5日の年休取得に向けて）
@@ -232,11 +252,32 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("就業規則が未作成（年5日の年休取得に向けた年休管理簿・就業規則等の整備が必要）");
   }
 
-  // 成果目標（時間外削減・年休の計画的付与・時間単位年休＋特別休暇 から1つ以上）
-  if (input.willImproveWorktime) {
-    reasons.push("労働時間の改善（成果目標：時間外削減／年休の計画的付与等）に取り組む予定あり");
+  // 成果目標（①時間外削減／②年休の計画的付与／③時間単位年休＋特別休暇 から1つ以上）→ 上限額を合算
+  let totalGoalCap = 0;
+  const goalLabels: string[] = [];
+  if (input.hatarakiGoal1) {
+    const cap1 = (input.hatarakiGoal1Type && h.goal1CapsByType[input.hatarakiGoal1Type]) || 0;
+    if (cap1 > 0) {
+      totalGoalCap += cap1;
+      goalLabels.push(`①時間外削減(上限${man(cap1)})`);
+    } else {
+      goalLabels.push("①時間外削減(区分未選択)");
+      shortfalls.push("成果目標①の区分（削減前→後の時間外）を選択すると上限額が確定します");
+    }
+  }
+  if (input.hatarakiGoal2) {
+    totalGoalCap += h.goal2Cap;
+    goalLabels.push(`②年休計画付与(上限${man(h.goal2Cap)})`);
+  }
+  if (input.hatarakiGoal3) {
+    totalGoalCap += h.goal3Cap;
+    goalLabels.push(`③時間単位年休＋特別休暇(上限${man(h.goal3Cap)})`);
+  }
+  const hasGoal = goalLabels.length > 0;
+  if (hasGoal) {
+    reasons.push(`成果目標を選択：${goalLabels.join("／")}`);
   } else {
-    shortfalls.push("成果目標（時間外削減・年休の計画的付与・時間単位年休＋特別休暇 から1つ以上）の設定が必要");
+    shortfalls.push("成果目標（①時間外削減・②年休の計画的付与・③時間単位年休＋特別休暇 から1つ以上）の設定が必要");
   }
 
   // 改善事業（設備・機器・研修・コンサル等）
@@ -247,19 +288,22 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("改善事業（設備・機器・研修・コンサル等）の内容が未確定");
   }
 
-  // 助成率・上限の枠組み（補助率3/4、30人以下かつ機器導入で所要額30万円超なら4/5）
+  // 想定助成額（成果目標の上限合計 と 対象経費×補助率 の低い方）
   const isSmall = input.employeeCount <= 30;
   const equipOver30man = (input.equipmentPrice ?? 0) > 300000;
   const rate = isSmall && hasInvest && equipOver30man ? h.subsidyRateSmall : h.subsidyRate;
   const ratePct = `${Math.round(rate * 100)}%`;
-  estimatedAmount =
-    `補助率 ${ratePct}（成果目標ごとの上限：①時間外削減 最大150万円・②年休計画付与 25万円・③時間単位年休＋特別休暇 25万円）。` +
-    `対象経費×補助率 と 上限額 の低い方を助成` +
-    ((input.equipmentPrice ?? 0) > 0
-      ? `（例：対象経費${(input.equipmentPrice ?? 0).toLocaleString()}円×${ratePct}=${Math.floor((input.equipmentPrice ?? 0) * rate).toLocaleString()}円。ただし成果目標の上限が適用）`
-      : "");
-  reasons.push(`想定助成額の目安：${estimatedAmount}`);
-  shortfalls.push("実際の助成額は、選択する成果目標と達成状況により決まるため要確認");
+  const byRate = Math.floor((input.equipmentPrice ?? 0) * rate);
+  if (hasGoal && totalGoalCap > 0 && (input.equipmentPrice ?? 0) > 0) {
+    const amount = Math.min(byRate, totalGoalCap);
+    estimatedAmount =
+      `約 ${amount.toLocaleString()}円（成果目標の上限合計 ${totalGoalCap.toLocaleString()}円、` +
+      `対象経費${(input.equipmentPrice ?? 0).toLocaleString()}円×補助率${ratePct}=${byRate.toLocaleString()}円 の少ない方）`;
+    reasons.push(`想定助成額：${estimatedAmount}`);
+  } else {
+    estimatedAmount = `補助率 ${ratePct}（成果目標①最大150万円・②③各25万円）。成果目標と対象経費が確定すると金額が算定されます`;
+    reasons.push(`想定助成額の目安：${estimatedAmount}`);
+  }
 
   risks.push(...c.commonRisks);
   risks.push(...complianceRisks(input));
@@ -267,16 +311,15 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   risks.push("成果目標が未達の場合、支給額の減額または不支給となる。");
   risks.push("申請期限：交付申請は令和8年11月30日（予算により早期締切あり）、事業完了は令和9年1月31日。");
 
-  const metAll = isSme && input.hasLaborInsurance && input.willImproveWorktime && hasInvest && workRulesExists(input);
+  const metAll = isSme && input.hasLaborInsurance && hasGoal && hasInvest && workRulesExists(input);
   const status: Status = metAll ? "○" : "△";
 
   if (status === "○") {
-    actions.push("成果目標（時間外削減／年休の計画的付与 等）を選定し計画書に落とし込む");
-    actions.push("改善事業（設備・研修・コンサル等）の見積書を取得");
-    actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出");
+    actions.push("選択した成果目標を計画書に落とし込み、改善事業の見積書を取得");
+    actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出（令和8年11月30日まで）");
   } else {
     if (!input.hasLaborInsurance) actions.push("労災保険の適用状況を確認する");
-    if (!input.willImproveWorktime) actions.push("設定可能な成果目標を社労士と整理する");
+    if (!hasGoal) actions.push("成果目標（①〜③のいずれか）を設定する");
     if (!hasInvest) actions.push("改善事業（機器・研修・コンサル等）を具体化する");
     if (!workRulesExists(input)) actions.push("就業規則・年次有給休暇管理簿を整備する");
   }
@@ -306,11 +349,8 @@ function judgeCareerUp(input: DiagnosisInput, c: Criteria): GrantResult {
   const actions: string[] = [];
   let estimatedAmount: string | undefined;
 
-  // 企業規模（中小/大企業）— 従業員数×業種区分で簡易判定
-  const smeMax =
-    c.gyomukaizen.smeMaxRegularEmployeesByCategory[input.industryCategory] ??
-    c.gyomukaizen.smeMaxRegularEmployeesByCategory["その他"];
-  const sizeKey = input.employeeCount <= smeMax ? "中小企業" : "大企業";
+  // 企業規模（中小/大企業）— 資本金 OR 従業員で判定
+  const sizeKey = smeInfo(input, c.gyomukaizen).isSme ? "中小企業" : "大企業";
 
   // 1) 有期雇用労働者の存在（雇用保険加入の有期 + 週20h未満の有期）
   const fixedTermTotal = input.fixedTermInsuredCount + input.under20hFixedTermCount;
@@ -331,20 +371,17 @@ function judgeCareerUp(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("正社員転換予定人数が未設定（追加確認が必要）");
   }
 
-  // 3) 想定支給額（有期→正規・1人あたりの額 × 転換予定人数）
+  // 3) 想定支給額（有期→正規。重点支援対象者の人数で精密に算定）
   if (hasConversion) {
     const amt = cu.amounts[sizeKey]?.["有期→正規"];
     if (amt) {
-      const lo = amt["上記以外"] * input.plannedConversions;
-      const hi = amt["重点支援"] * input.plannedConversions;
+      const priority = Math.min(input.prioritySupportConversions, input.plannedConversions);
+      const normal = input.plannedConversions - priority;
+      const total = priority * amt["重点支援"] + normal * amt["上記以外"];
       estimatedAmount =
-        `${sizeKey}・有期→正規：1人 ${(amt["上記以外"] / 10000).toLocaleString()}万〜${(amt["重点支援"] / 10000).toLocaleString()}万円` +
-        `（重点支援対象者※は上限額）× 転換予定${input.plannedConversions}名 = 約 ${lo.toLocaleString()}〜${hi.toLocaleString()}円` +
-        `（＋制度新設等の加算 最大40万円/事業所・1回）`;
+        `${sizeKey}・有期→正規：重点支援${priority}名×${man(amt["重点支援"])} ＋ その他${normal}名×${man(amt["上記以外"])} ` +
+        `= 約 ${total.toLocaleString()}円（＋制度新設等の加算 最大40万円/事業所・1回）`;
       reasons.push(`想定支給額：${estimatedAmount}`);
-      shortfalls.push(
-        "※重点支援対象者＝雇入れ3年以上の有期 等。該当有無で支給額（2期制）が変わるため要確認",
-      );
     }
   }
 

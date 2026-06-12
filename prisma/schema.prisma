@@ -28,6 +28,7 @@ model Diagnosis {
   industry         String
   industryCategory String // 中小企業判定用の業種区分
   orgType          String // "法人" | "個人事業"
+  capitalYen       Int      @default(0) // 資本金額（中小企業判定用）
   contactName      String? // ご担当者名
   contactTel       String? // 連絡先TEL
   contactEmail     String? // メールアドレス
@@ -42,6 +43,7 @@ model Diagnosis {
   under20hUninsuredCount Int @default(0) // D 週20時間未満で雇用保険適用外
   under20hFixedTermCount Int @default(0) // Dのうち週20時間未満の有期契約
   inHouseMinWage        Int // 会社内の最低賃金（円）
+  regionalMinWage       Int @default(0) // 地域別最低賃金（円）
 
   // --- 労務・コンプライアンス ---
   hasLaborInsurance      Boolean // 労災保険加入
@@ -94,8 +96,15 @@ model Diagnosis {
   productivityEffect  String? // 生産性向上効果
 
   // --- 正社員転換 ---
-  plannedConversions Int // 正社員転換予定人数
-  conversionDate     String? // 転換予定日
+  plannedConversions        Int // 正社員転換予定人数
+  prioritySupportConversions Int @default(0) // うち重点支援対象者の人数
+  conversionDate            String? // 転換予定日
+
+  // --- 働き方改革：成果目標 ---
+  hatarakiGoal1     Boolean @default(false) // 成果目標①時間外労働の削減
+  hatarakiGoal1Type String? // ①の区分（時間数）
+  hatarakiGoal2     Boolean @default(false) // 成果目標②年休の計画的付与
+  hatarakiGoal3     Boolean @default(false) // 成果目標③時間単位年休＋特別休暇
 
   // --- 状況・不支給リスク関連 ---
   pastSubsidies        String? // 過去に申請した助成金

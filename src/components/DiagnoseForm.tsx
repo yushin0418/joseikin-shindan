@@ -11,6 +11,7 @@ type FormState = {
   industry: string;
   industryCategory: string;
   orgType: string;
+  capitalYen: number;
   contactName: string;
   contactTel: string;
   contactEmail: string;
@@ -24,6 +25,7 @@ type FormState = {
   under20hUninsuredCount: number;
   under20hFixedTermCount: number;
   inHouseMinWage: number;
+  regionalMinWage: number;
   // 労務・コンプライアンス
   hasLaborInsurance: boolean;
   hasEmploymentIns: boolean;
@@ -70,7 +72,13 @@ type FormState = {
   productivityEffect: string;
   // 正社員転換
   plannedConversions: number;
+  prioritySupportConversions: number;
   conversionDate: string;
+  // 働き方改革：成果目標
+  hatarakiGoal1: boolean;
+  hatarakiGoal1Type: string;
+  hatarakiGoal2: boolean;
+  hatarakiGoal3: boolean;
   // 状況・リスク
   pastSubsidies: string;
   sharoshiContract: string;
@@ -93,6 +101,7 @@ const initial: FormState = {
   industry: "建設業",
   industryCategory: "その他",
   orgType: "法人",
+  capitalYen: 10000000,
   contactName: "代表取締役 山田 花子",
   contactTel: "03-5954-0000",
   contactEmail: "",
@@ -105,6 +114,7 @@ const initial: FormState = {
   under20hUninsuredCount: 1,
   under20hFixedTermCount: 0,
   inHouseMinWage: 1226,
+  regionalMinWage: 1226,
   hasLaborInsurance: true,
   hasEmploymentIns: true,
   hasSocialInsurance: true,
@@ -145,7 +155,12 @@ const initial: FormState = {
   equipmentPurpose: "作業効率の向上",
   productivityEffect: "作業時間短縮による生産性向上",
   plannedConversions: 1,
+  prioritySupportConversions: 1,
   conversionDate: "",
+  hatarakiGoal1: true,
+  hatarakiGoal1Type: "月60h以下→月80h超",
+  hatarakiGoal2: false,
+  hatarakiGoal3: false,
   pastSubsidies: "",
   sharoshiContract: "なし",
   companyReasonLeavers: 0,
@@ -163,6 +178,7 @@ const STATUS3 = ["届出済み", "作成済み未届", "未作成"];
 const RETIREMENT = ["", "65歳", "60歳継続雇用", "定年なし"];
 const CONTRACTS = ["はい", "いいえ", "その他"];
 const SHAROSHI = ["なし", "顧問", "スポット"];
+const GOAL1TYPES = ["", "月60h以下→月60超80h以下", "月60h以下→月80h超", "月60超80h→月80h超"];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -300,6 +316,7 @@ export function DiagnoseForm() {
         <Text label="業種" value={form.industry} onChange={(v) => set("industry", v)} />
         <Select label="業種区分（中小企業判定用）" value={form.industryCategory} onChange={(v) => set("industryCategory", v)} options={CATEGORIES} />
         <Select label="法人・個人事業" value={form.orgType} onChange={(v) => set("orgType", v)} options={["法人", "個人事業"]} />
+        <Text label="資本金額（円）※中小企業判定用" type="number" value={form.capitalYen} onChange={(v) => set("capitalYen", num(v))} />
         <Text label="ご担当者名" value={form.contactName} onChange={(v) => set("contactName", v)} />
         <Text label="連絡先TEL" value={form.contactTel} onChange={(v) => set("contactTel", v)} />
         <Text label="メールアドレス" type="email" value={form.contactEmail} onChange={(v) => set("contactEmail", v)} />
@@ -310,6 +327,7 @@ export function DiagnoseForm() {
       <Section title="従業員（全体 = A+B+C+D）">
         <Text label="従業員数（全体）" type="number" value={form.employeeCount} onChange={(v) => set("employeeCount", num(v))} />
         <Text label="会社内の最低賃金（円）" type="number" value={form.inHouseMinWage} onChange={(v) => set("inHouseMinWage", num(v))} />
+        <Text label="地域別最低賃金（円）" type="number" value={form.regionalMinWage} onChange={(v) => set("regionalMinWage", num(v))} />
         <Text label="A 正規社員数" type="number" value={form.regularStaffCount} onChange={(v) => set("regularStaffCount", num(v))} />
         <Text label="B 雇用保険加入の無期契約労働者数" type="number" value={form.permanentInsuredCount} onChange={(v) => set("permanentInsuredCount", num(v))} />
         <Text label="C 雇用保険加入の有期契約労働者数" type="number" value={form.fixedTermInsuredCount} onChange={(v) => set("fixedTermInsuredCount", num(v))} />
@@ -378,9 +396,17 @@ export function DiagnoseForm() {
         <Text label="生産性向上効果" value={form.productivityEffect} onChange={(v) => set("productivityEffect", v)} />
       </Section>
 
-      <Section title="正社員転換">
+      <Section title="正社員転換（キャリアアップ助成金）">
         <Text label="正社員転換予定人数" type="number" value={form.plannedConversions} onChange={(v) => set("plannedConversions", num(v))} />
+        <Text label="うち重点支援対象者の人数（雇入れ3年以上の有期 等）" type="number" value={form.prioritySupportConversions} onChange={(v) => set("prioritySupportConversions", num(v))} />
         <Text label="転換予定日" type="date" value={form.conversionDate} onChange={(v) => set("conversionDate", v)} />
+      </Section>
+
+      <Section title="働き方改革：成果目標（1つ以上）">
+        <Check label="成果目標① 時間外労働の削減" checked={form.hatarakiGoal1} onChange={(v) => set("hatarakiGoal1", v)} />
+        <Select label="①の区分（削減前→後の時間外）" value={form.hatarakiGoal1Type} onChange={(v) => set("hatarakiGoal1Type", v)} options={GOAL1TYPES} placeholder="未選択" />
+        <Check label="成果目標② 年次有給休暇の計画的付与制度を新規導入" checked={form.hatarakiGoal2} onChange={(v) => set("hatarakiGoal2", v)} />
+        <Check label="成果目標③ 時間単位の年休＋特別休暇を新規導入" checked={form.hatarakiGoal3} onChange={(v) => set("hatarakiGoal3", v)} />
       </Section>
 
       <Section title="状況・不支給リスク確認">

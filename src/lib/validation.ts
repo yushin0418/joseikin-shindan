@@ -14,6 +14,7 @@ export const diagnosisInputSchema = z
     industry: z.string().trim().min(1, "業種は必須です").max(80),
     industryCategory: z.enum(["小売業", "サービス業", "卸売業", "製造業その他", "その他"]),
     orgType: z.enum(["法人", "個人事業"]),
+    capitalYen: yen,
     contactName: z.string().trim().max(80).optional().or(z.literal("")),
     contactTel: z.string().trim().max(40).optional().or(z.literal("")),
     contactEmail: z.string().trim().email("メールアドレスの形式が不正です").max(120).optional().or(z.literal("")),
@@ -28,6 +29,7 @@ export const diagnosisInputSchema = z
     under20hUninsuredCount: intNonNeg,
     under20hFixedTermCount: intNonNeg,
     inHouseMinWage: yen,
+    regionalMinWage: yen,
 
     // 労務・コンプライアンス
     hasLaborInsurance: z.boolean(),
@@ -80,7 +82,16 @@ export const diagnosisInputSchema = z
 
     // 正社員転換
     plannedConversions: intNonNeg,
+    prioritySupportConversions: intNonNeg,
     conversionDate: z.string().trim().max(20).optional().or(z.literal("")),
+
+    // 働き方改革：成果目標
+    hatarakiGoal1: z.boolean(),
+    hatarakiGoal1Type: z
+      .enum(["", "月60h以下→月60超80h以下", "月60h以下→月80h超", "月60超80h→月80h超"])
+      .optional(),
+    hatarakiGoal2: z.boolean(),
+    hatarakiGoal3: z.boolean(),
 
     // 状況・不支給リスク関連
     pastSubsidies: optStr,

@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       industry: input.industry,
       industryCategory: input.industryCategory,
       orgType: input.orgType,
+      capitalYen: input.capitalYen,
       contactName: input.contactName || null,
       contactTel: input.contactTel || null,
       contactEmail: input.contactEmail || null,
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
       under20hUninsuredCount: input.under20hUninsuredCount,
       under20hFixedTermCount: input.under20hFixedTermCount,
       inHouseMinWage: input.inHouseMinWage,
+      regionalMinWage: input.regionalMinWage,
 
       hasLaborInsurance: input.hasLaborInsurance,
       hasEmploymentIns: input.hasEmploymentIns,
@@ -96,7 +98,12 @@ export async function POST(req: NextRequest) {
       productivityEffect: input.productivityEffect || null,
 
       plannedConversions: input.plannedConversions,
+      prioritySupportConversions: input.prioritySupportConversions,
       conversionDate: input.conversionDate || null,
+      hatarakiGoal1: input.hatarakiGoal1,
+      hatarakiGoal1Type: input.hatarakiGoal1Type || null,
+      hatarakiGoal2: input.hatarakiGoal2,
+      hatarakiGoal3: input.hatarakiGoal3,
 
       pastSubsidies: input.pastSubsidies || null,
       sharoshiContract: input.sharoshiContract,

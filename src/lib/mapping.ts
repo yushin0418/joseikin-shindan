@@ -10,6 +10,7 @@ export function toDiagnosisInput(d: Diagnosis): DiagnosisInput {
     industry: d.industry,
     industryCategory: d.industryCategory as DiagnosisInput["industryCategory"],
     orgType: d.orgType as DiagnosisInput["orgType"],
+    capitalYen: d.capitalYen,
     contactName: d.contactName ?? "",
     contactTel: d.contactTel ?? "",
     contactEmail: d.contactEmail ?? "",
@@ -23,6 +24,7 @@ export function toDiagnosisInput(d: Diagnosis): DiagnosisInput {
     under20hUninsuredCount: d.under20hUninsuredCount,
     under20hFixedTermCount: d.under20hFixedTermCount,
     inHouseMinWage: d.inHouseMinWage,
+    regionalMinWage: d.regionalMinWage,
 
     hasLaborInsurance: d.hasLaborInsurance,
     hasEmploymentIns: d.hasEmploymentIns,
@@ -69,7 +71,12 @@ export function toDiagnosisInput(d: Diagnosis): DiagnosisInput {
     productivityEffect: d.productivityEffect ?? "",
 
     plannedConversions: d.plannedConversions,
+    prioritySupportConversions: d.prioritySupportConversions,
     conversionDate: d.conversionDate ?? "",
+    hatarakiGoal1: d.hatarakiGoal1,
+    hatarakiGoal1Type: (d.hatarakiGoal1Type ?? "") as DiagnosisInput["hatarakiGoal1Type"],
+    hatarakiGoal2: d.hatarakiGoal2,
+    hatarakiGoal3: d.hatarakiGoal3,
 
     pastSubsidies: d.pastSubsidies ?? "",
     sharoshiContract: d.sharoshiContract as DiagnosisInput["sharoshiContract"],
