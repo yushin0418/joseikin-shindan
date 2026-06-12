@@ -74,11 +74,9 @@ type FormState = {
   plannedConversions: number;
   prioritySupportConversions: number;
   conversionDate: string;
-  // 働き方改革：成果目標
-  hatarakiGoal1: boolean;
-  hatarakiGoal1Type: string;
-  hatarakiGoal2: boolean;
-  hatarakiGoal3: boolean;
+  // 働き方改革：取り組みたいこと（やさしい言葉）
+  hatarakiGoal1: boolean; // 残業を減らしたい
+  hatarakiGoal2: boolean; // 有給を取りやすくしたい
   // 状況・リスク
   pastSubsidies: string;
   sharoshiContract: string;
@@ -87,8 +85,7 @@ type FormState = {
   over50FixedTerm: number;
   noFraudPast3y: boolean;
   noLaborLawViolation: boolean;
-  // 取組予定
-  willImproveWorktime: boolean;
+  // その他（判定補助）
   canPrepareCareerPlan: boolean;
   canReviseWorkRules: boolean;
 };
@@ -158,9 +155,7 @@ const initial: FormState = {
   prioritySupportConversions: 1,
   conversionDate: "",
   hatarakiGoal1: true,
-  hatarakiGoal1Type: "月60h以下→月80h超",
-  hatarakiGoal2: false,
-  hatarakiGoal3: false,
+  hatarakiGoal2: true,
   pastSubsidies: "",
   sharoshiContract: "なし",
   companyReasonLeavers: 0,
@@ -168,7 +163,6 @@ const initial: FormState = {
   over50FixedTerm: 0,
   noFraudPast3y: true,
   noLaborLawViolation: true,
-  willImproveWorktime: true,
   canPrepareCareerPlan: true,
   canReviseWorkRules: true,
 };
@@ -178,7 +172,6 @@ const STATUS3 = ["届出済み", "作成済み未届", "未作成"];
 const RETIREMENT = ["", "65歳", "60歳継続雇用", "定年なし"];
 const CONTRACTS = ["はい", "いいえ", "その他"];
 const SHAROSHI = ["なし", "顧問", "スポット"];
-const GOAL1TYPES = ["", "月60h以下→月60超80h以下", "月60h以下→月80h超", "月60超80h→月80h超"];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -402,11 +395,9 @@ export function DiagnoseForm() {
         <Text label="転換予定日" type="date" value={form.conversionDate} onChange={(v) => set("conversionDate", v)} />
       </Section>
 
-      <Section title="働き方改革：成果目標（1つ以上）">
-        <Check label="成果目標① 時間外労働の削減" checked={form.hatarakiGoal1} onChange={(v) => set("hatarakiGoal1", v)} />
-        <Select label="①の区分（削減前→後の時間外）" value={form.hatarakiGoal1Type} onChange={(v) => set("hatarakiGoal1Type", v)} options={GOAL1TYPES} placeholder="未選択" />
-        <Check label="成果目標② 年次有給休暇の計画的付与制度を新規導入" checked={form.hatarakiGoal2} onChange={(v) => set("hatarakiGoal2", v)} />
-        <Check label="成果目標③ 時間単位の年休＋特別休暇を新規導入" checked={form.hatarakiGoal3} onChange={(v) => set("hatarakiGoal3", v)} />
+      <Section title="働き方改革で取り組みたいこと（あてはまるものを選択）">
+        <Check label="残業（時間外労働）を減らしたい" checked={form.hatarakiGoal1} onChange={(v) => set("hatarakiGoal1", v)} />
+        <Check label="有給休暇を取りやすくしたい（計画的付与・時間単位など）" checked={form.hatarakiGoal2} onChange={(v) => set("hatarakiGoal2", v)} />
       </Section>
 
       <Section title="状況・不支給リスク確認">
@@ -420,9 +411,8 @@ export function DiagnoseForm() {
         <Check label="過去1年間、労働関係法令の違反はない" checked={form.noLaborLawViolation} onChange={(v) => set("noLaborLawViolation", v)} />
       </Section>
 
-      <Section title="取組予定（判定の補助情報）">
-        <Check label="労働時間改善に取り組む予定" checked={form.willImproveWorktime} onChange={(v) => set("willImproveWorktime", v)} />
-        <Check label="キャリアアップ計画の整備が可能" checked={form.canPrepareCareerPlan} onChange={(v) => set("canPrepareCareerPlan", v)} />
+      <Section title="その他（判定の補助情報）">
+        <Check label="キャリアアップ計画の整備が可能（社労士に相談できる）" checked={form.canPrepareCareerPlan} onChange={(v) => set("canPrepareCareerPlan", v)} />
         <Check label="就業規則の改定が可能" checked={form.canReviseWorkRules} onChange={(v) => set("canReviseWorkRules", v)} />
       </Section>
 

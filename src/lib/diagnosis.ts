@@ -252,32 +252,16 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("就業規則が未作成（年5日の年休取得に向けた年休管理簿・就業規則等の整備が必要）");
   }
 
-  // 成果目標（①時間外削減／②年休の計画的付与／③時間単位年休＋特別休暇 から1つ以上）→ 上限額を合算
-  let totalGoalCap = 0;
-  const goalLabels: string[] = [];
-  if (input.hatarakiGoal1) {
-    const cap1 = (input.hatarakiGoal1Type && h.goal1CapsByType[input.hatarakiGoal1Type]) || 0;
-    if (cap1 > 0) {
-      totalGoalCap += cap1;
-      goalLabels.push(`①時間外削減(上限${man(cap1)})`);
-    } else {
-      goalLabels.push("①時間外削減(区分未選択)");
-      shortfalls.push("成果目標①の区分（削減前→後の時間外）を選択すると上限額が確定します");
-    }
-  }
-  if (input.hatarakiGoal2) {
-    totalGoalCap += h.goal2Cap;
-    goalLabels.push(`②年休計画付与(上限${man(h.goal2Cap)})`);
-  }
-  if (input.hatarakiGoal3) {
-    totalGoalCap += h.goal3Cap;
-    goalLabels.push(`③時間単位年休＋特別休暇(上限${man(h.goal3Cap)})`);
-  }
-  const hasGoal = goalLabels.length > 0;
+  // 取り組みたいこと（残業削減＝成果目標①／有給取得促進＝成果目標②③ に対応。具体目標は社労士が設定）
+  const wants: string[] = [];
+  if (input.hatarakiGoal1) wants.push("残業（時間外労働）の削減 → 成果目標①");
+  if (input.hatarakiGoal2) wants.push("有給休暇の取得促進 → 成果目標②③");
+  if (input.hatarakiGoal3) wants.push("時間単位年休＋特別休暇 → 成果目標③");
+  const hasGoal = wants.length > 0;
   if (hasGoal) {
-    reasons.push(`成果目標を選択：${goalLabels.join("／")}`);
+    reasons.push(`取り組みたいこと：${wants.join("／")}（具体的な成果目標は社労士が設定）`);
   } else {
-    shortfalls.push("成果目標（①時間外削減・②年休の計画的付与・③時間単位年休＋特別休暇 から1つ以上）の設定が必要");
+    shortfalls.push("働き方改革で取り組みたいこと（残業削減・有給取得促進 など）が未設定");
   }
 
   // 改善事業（設備・機器・研修・コンサル等）
@@ -288,22 +272,20 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("改善事業（設備・機器・研修・コンサル等）の内容が未確定");
   }
 
-  // 想定助成額（成果目標の上限合計 と 対象経費×補助率 の低い方）
+  // 想定助成額の目安（補助率＋成果目標別の上限。正確な成果目標と金額は社労士が確定）
   const isSmall = input.employeeCount <= 30;
   const equipOver30man = (input.equipmentPrice ?? 0) > 300000;
   const rate = isSmall && hasInvest && equipOver30man ? h.subsidyRateSmall : h.subsidyRate;
   const ratePct = `${Math.round(rate * 100)}%`;
-  const byRate = Math.floor((input.equipmentPrice ?? 0) * rate);
-  if (hasGoal && totalGoalCap > 0 && (input.equipmentPrice ?? 0) > 0) {
-    const amount = Math.min(byRate, totalGoalCap);
-    estimatedAmount =
-      `約 ${amount.toLocaleString()}円（成果目標の上限合計 ${totalGoalCap.toLocaleString()}円、` +
-      `対象経費${(input.equipmentPrice ?? 0).toLocaleString()}円×補助率${ratePct}=${byRate.toLocaleString()}円 の少ない方）`;
-    reasons.push(`想定助成額：${estimatedAmount}`);
-  } else {
-    estimatedAmount = `補助率 ${ratePct}（成果目標①最大150万円・②③各25万円）。成果目標と対象経費が確定すると金額が算定されます`;
-    reasons.push(`想定助成額の目安：${estimatedAmount}`);
-  }
+  const goal1Max = Math.max(...Object.values(h.goal1CapsByType));
+  estimatedAmount =
+    `補助率 ${ratePct}（30人以下かつ機器導入で所要額30万円超なら4/5）。` +
+    `成果目標により上限 ${man(h.goal2Cap)}〜${man(goal1Max)}（①時間外削減 最大${man(goal1Max)}・②年休計画付与 ${man(h.goal2Cap)}・③時間単位年休＋特別休暇 ${man(h.goal3Cap)}）。` +
+    `正確な成果目標と金額は社労士が確定します` +
+    ((input.equipmentPrice ?? 0) > 0
+      ? `（参考：対象経費${(input.equipmentPrice ?? 0).toLocaleString()}円×${ratePct}=${Math.floor((input.equipmentPrice ?? 0) * rate).toLocaleString()}円。ただし上限が適用）`
+      : "");
+  reasons.push(`想定助成額の目安：${estimatedAmount}`);
 
   risks.push(...c.commonRisks);
   risks.push(...complianceRisks(input));
@@ -319,7 +301,7 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
     actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出（令和8年11月30日まで）");
   } else {
     if (!input.hasLaborInsurance) actions.push("労災保険の適用状況を確認する");
-    if (!hasGoal) actions.push("成果目標（①〜③のいずれか）を設定する");
+    if (!hasGoal) actions.push("残業削減・有給取得促進など、取り組みたいことを選ぶ");
     if (!hasInvest) actions.push("改善事業（機器・研修・コンサル等）を具体化する");
     if (!workRulesExists(input)) actions.push("就業規則・年次有給休暇管理簿を整備する");
   }

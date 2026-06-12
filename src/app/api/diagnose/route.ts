@@ -100,10 +100,10 @@ export async function POST(req: NextRequest) {
       plannedConversions: input.plannedConversions,
       prioritySupportConversions: input.prioritySupportConversions,
       conversionDate: input.conversionDate || null,
-      hatarakiGoal1: input.hatarakiGoal1,
+      hatarakiGoal1: input.hatarakiGoal1 ?? false,
       hatarakiGoal1Type: input.hatarakiGoal1Type || null,
-      hatarakiGoal2: input.hatarakiGoal2,
-      hatarakiGoal3: input.hatarakiGoal3,
+      hatarakiGoal2: input.hatarakiGoal2 ?? false,
+      hatarakiGoal3: input.hatarakiGoal3 ?? false,
 
       pastSubsidies: input.pastSubsidies || null,
       sharoshiContract: input.sharoshiContract,
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       noFraudPast3y: input.noFraudPast3y,
       noLaborLawViolation: input.noLaborLawViolation,
 
-      willImproveWorktime: input.willImproveWorktime,
+      willImproveWorktime: input.willImproveWorktime ?? false,
       canPrepareCareerPlan: input.canPrepareCareerPlan,
       canReviseWorkRules: input.canReviseWorkRules,
 

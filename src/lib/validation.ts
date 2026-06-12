@@ -85,13 +85,11 @@ export const diagnosisInputSchema = z
     prioritySupportConversions: intNonNeg,
     conversionDate: z.string().trim().max(20).optional().or(z.literal("")),
 
-    // 働き方改革：成果目標
-    hatarakiGoal1: z.boolean(),
-    hatarakiGoal1Type: z
-      .enum(["", "月60h以下→月60超80h以下", "月60h以下→月80h超", "月60超80h→月80h超"])
-      .optional(),
-    hatarakiGoal2: z.boolean(),
-    hatarakiGoal3: z.boolean(),
+    // 働き方改革：希望（やさしい言葉。詳細な成果目標は社労士が設定）
+    hatarakiGoal1: z.boolean().optional(), // 残業を減らしたい
+    hatarakiGoal1Type: z.string().trim().max(60).optional().or(z.literal("")),
+    hatarakiGoal2: z.boolean().optional(), // 有給を取りやすくしたい
+    hatarakiGoal3: z.boolean().optional(),
 
     // 状況・不支給リスク関連
     pastSubsidies: optStr,
@@ -103,7 +101,7 @@ export const diagnosisInputSchema = z
     noLaborLawViolation: z.boolean(),
 
     // 取組予定（判定補助）
-    willImproveWorktime: z.boolean(),
+    willImproveWorktime: z.boolean().optional(),
     canPrepareCareerPlan: z.boolean(),
     canReviseWorkRules: z.boolean(),
   })
