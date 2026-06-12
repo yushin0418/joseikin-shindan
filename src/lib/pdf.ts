@@ -119,10 +119,18 @@ function grantBlock(
   useFont().fillColor(STATUS_COLOR[g.status] ?? "#111827").text(g.status);
   doc.moveDown(0.2);
 
+  if (g.estimatedAmount) {
+    useFont().fontSize(10).fillColor("#1d4ed8").text(`想定助成額：${g.estimatedAmount}`, { width: 495 });
+    doc.moveDown(0.2);
+  }
+
   labeledList(doc, useFont, "対象理由", g.reasons, "#374151");
   labeledList(doc, useFont, "不足要件", g.shortfalls, "#374151");
   labeledList(doc, useFont, "想定リスク", g.risks, "#374151");
   labeledList(doc, useFont, "必要書類", g.requiredDocs, "#374151");
+  if (g.source) {
+    useFont().fontSize(8).fillColor("#9ca3af").text(`出典：${g.source}`);
+  }
   doc.moveDown(0.6);
 }
 

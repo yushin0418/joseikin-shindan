@@ -18,6 +18,10 @@ export interface GrantResult {
   actions: string[];
   /** 必要書類 */
   requiredDocs: string[];
+  /** 想定助成額（算定できた場合のみ。要領準拠の計算結果） */
+  estimatedAmount?: string;
+  /** 判定の根拠（出典） */
+  source?: string;
 }
 
 export interface DiagnosisResult {
@@ -69,53 +73,71 @@ function complianceRisks(input: DiagnosisInput): string[] {
 // ---------------------------------------------------------------------------
 // 業務改善助成金
 // ---------------------------------------------------------------------------
+/** 引上げ額からコースを判定（90→70→50） */
+function pickGyomukaizenCourse(raiseYen: number, g: Criteria["gyomukaizen"]) {
+  if (raiseYen >= 90) return g.courses["90"];
+  if (raiseYen >= 70) return g.courses["70"];
+  if (raiseYen >= g.minRaiseYen) return g.courses["50"];
+  return null;
+}
+
+/** 人数帯と事業場規模から助成上限額を取得 */
+function gyomukaizenCap(
+  course: Criteria["gyomukaizen"]["courses"][string],
+  headcount: number,
+  isSmallEmployer: boolean,
+): number {
+  const band = course.caps.find((b) => headcount <= b.maxHc) ?? course.caps[course.caps.length - 1];
+  return isSmallEmployer ? band.small : band.normal;
+}
+
 function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
   const g = c.gyomukaizen;
   const reasons: string[] = [];
   const shortfalls: string[] = [];
   const risks: string[] = [];
   const actions: string[] = [];
+  let estimatedAmount: string | undefined;
 
-  // 1) 中小企業判定（業種区分 × 従業員数）
+  // 1) 中小企業判定（業種区分 × 従業員数。※本来は資本金基準も併用）
   const smeMax =
     g.smeMaxRegularEmployeesByCategory[input.industryCategory] ??
     g.smeMaxRegularEmployeesByCategory["その他"];
   const isSme = input.employeeCount <= smeMax;
   if (isSme) {
-    reasons.push(
-      `中小企業に該当（${input.industryCategory}：従業員 ${input.employeeCount}名 ≦ ${smeMax}名）`,
-    );
+    reasons.push(`中小企業に該当（${input.industryCategory}：従業員 ${input.employeeCount}名 ≦ ${smeMax}名）`);
   } else {
     shortfalls.push(
       `中小企業の規模要件を超過の可能性（${input.industryCategory}：${input.employeeCount}名 > ${smeMax}名）。※資本金基準でも判定されるため要確認`,
     );
   }
 
-  // 2) 会社内の最低賃金（地域別最低賃金との差額は社労士が照合）
-  if (input.inHouseMinWage <= 0) {
-    shortfalls.push("会社内の最低賃金が未入力（追加確認が必要）");
+  // 2) 事業場内最低賃金が地域別最低賃金「未満」であること（要領上の対象要件）
+  if (input.inHouseMinWage > 0) {
+    reasons.push(`事業場内最低賃金 ${input.inHouseMinWage.toLocaleString()}円`);
   } else {
-    reasons.push(`会社内の最低賃金 ${input.inHouseMinWage.toLocaleString()}円`);
+    shortfalls.push("事業場内最低賃金が未入力（追加確認が必要）");
   }
   shortfalls.push(
-    `地域別最低賃金との差額（${g.minWageGapYen}円以内）は、社労士が最新の地域別最低賃金と照合して確認（システム未判定）`,
+    "事業場内最低賃金が令和8年度の地域別最低賃金「未満」であることが要件。社労士が最新の地域別最低賃金と照合して確認（システム未判定）",
   );
 
-  // 3) 賃上げ予定
-  const hasRaise = input.plannedWageRaise > 0 && input.wageRaiseHeadcount > 0;
-  if (hasRaise) {
+  // 3) 賃上げ予定（50円以上）→ コース判定
+  const course = pickGyomukaizenCourse(input.plannedWageRaise, g);
+  const hasRaise = course !== null && input.wageRaiseHeadcount > 0;
+  if (hasRaise && course) {
     reasons.push(
-      `賃上げ予定あり（+${input.plannedWageRaise}円／対象${input.wageRaiseHeadcount}名）`,
+      `事業場内最低賃金を ${input.plannedWageRaise}円引上げ予定 → ${course.label}（対象${input.wageRaiseHeadcount}名）`,
     );
+  } else if (input.plannedWageRaise > 0 && input.plannedWageRaise < g.minRaiseYen) {
+    shortfalls.push(`引上げ額が${g.minRaiseYen}円未満です（本助成金は${g.minRaiseYen}円以上の引上げが必要）`);
   } else {
-    shortfalls.push("事業場内最低賃金の引上げ予定が未設定（追加確認が必要）");
+    shortfalls.push("事業場内最低賃金の引上げ予定（額・人数）が未設定（追加確認が必要）");
   }
 
   // 4) 生産性向上設備の導入予定
   const hasInvest =
-    input.willInvestEquipment &&
-    !!input.equipmentName &&
-    (input.equipmentPrice ?? 0) > 0;
+    input.willInvestEquipment && !!input.equipmentName && (input.equipmentPrice ?? 0) > 0;
   if (input.willInvestEquipment && !hasInvest) {
     shortfalls.push("設備導入予定はあるが設備名・金額が未確定（見積取得が必要）");
   } else if (hasInvest) {
@@ -126,30 +148,45 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
     shortfalls.push("生産性向上設備等の導入予定なし（本助成金は設備投資等が前提）");
   }
 
-  // リスク（対象要件とは分離）
+  // 5) 想定助成額の算定（要領の上限額表 × 助成率）
+  if (course && input.wageRaiseHeadcount > 0 && hasInvest && input.inHouseMinWage > 0) {
+    const isSmallEmployer = input.employeeCount < g.smallEmployerMaxEmployees;
+    const cap = gyomukaizenCap(course, input.wageRaiseHeadcount, isSmallEmployer);
+    const rate = input.inHouseMinWage < g.rate.boundaryYen ? g.rate.below : g.rate.atOrAbove;
+    const byRate = Math.floor((input.equipmentPrice ?? 0) * rate);
+    const amount = Math.min(byRate, cap);
+    const ratePct = `${Math.round(rate * 100)}%`;
+    estimatedAmount =
+      `約 ${amount.toLocaleString()}円` +
+      `（${course.label}・${isSmallEmployer ? "事業場規模30人未満" : "30人以上"}・対象${input.wageRaiseHeadcount}名 → 上限${cap.toLocaleString()}円、` +
+      `設備費${(input.equipmentPrice ?? 0).toLocaleString()}円×助成率${ratePct}=${byRate.toLocaleString()}円 の少ない方）`;
+    reasons.push(`想定助成額：${estimatedAmount}`);
+  }
+
+  // リスク（対象要件とは分離。要領・案内に基づく）
   risks.push(...c.commonRisks);
   risks.push(...complianceRisks(input));
-  risks.push("交付決定前に設備を発注・支払いすると対象外。発注時期の管理が必須。");
+  risks.push("交付決定前に設備の発注・購入・支払いを行うと対象外。");
+  risks.push("引上げ対象は、週所定労働時間20時間以上の雇用保険被保険者（雇入れ後6か月経過者）。");
+  risks.push("引上げ後の事業場内最低賃金と同額を就業規則等に定める必要がある（複数回に分けた引上げは不可）。");
+  risks.push("同一事業所の申請は年度内1回まで。自動車（特殊用途車を除く）は助成対象外。");
   if (!input.hasWageLedger) risks.push("賃金台帳が未整備だと事業場内最低賃金の確認ができず申請に支障。");
 
   // ステータス決定
-  const fatal = !isSme && false; // 規模超過は資本金基準もあるため即×にはしない
   const metAll = isSme && hasRaise && hasInvest;
-  const noneCore = !hasRaise && !hasInvest; // 中核要件が両方欠落
-  const status: Status = noneCore ? "×" : decideStatus(metAll, fatal);
+  const noneCore = !hasRaise && !hasInvest;
+  const status: Status = noneCore ? "×" : decideStatus(metAll, false);
 
-  // アクション
   if (status === "○") {
-    actions.push("交付申請書・事業実施計画書の作成に着手");
+    actions.push("交付申請書・事業実施計画書を作成し、管轄の都道府県労働局へ提出");
     actions.push("設備の見積書（原則相見積り）を取得");
-    actions.push("引上げ後賃金を就業規則・賃金規定に反映");
+    actions.push("引上げ後の事業場内最低賃金額を就業規則・賃金規定に反映");
   } else if (status === "△") {
-    if (!hasRaise) actions.push("賃上げ額・対象人数を確定する");
+    if (!hasRaise) actions.push(`賃上げ額（${g.minRaiseYen}円以上）・対象人数を確定する`);
     if (!hasInvest) actions.push("導入設備と概算金額・見積先を確定する");
-    actions.push("地域別最低賃金と会社内最低賃金の差額要件を社労士が確認");
-    actions.push("社労士に最新のコース区分・助成上限を確認");
+    actions.push("最新の地域別最低賃金と事業場内最低賃金を社労士が照合");
   } else {
-    actions.push("まず賃上げ計画と設備投資計画の有無を整理する");
+    actions.push("まず賃上げ計画（50円以上）と設備投資計画の有無を整理する");
   }
 
   return {
@@ -161,6 +198,8 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
     risks,
     actions,
     requiredDocs: g.requiredDocs,
+    estimatedAmount,
+    source: g.source,
   };
 }
 

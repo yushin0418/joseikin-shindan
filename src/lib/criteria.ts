@@ -8,10 +8,16 @@ export interface Criteria {
   updatedAt: string;
   gyomukaizen: {
     label: string;
+    fiscalYear: string;
+    source: string;
+    minRaiseYen: number;
+    rate: { boundaryYen: number; below: number; atOrAbove: number };
+    smallEmployerMaxEmployees: number;
     smeMaxRegularEmployeesByCategory: Record<string, number>;
-    minWageGapYen: number;
-    requireWageRaisePlan: boolean;
-    requireProductivityInvestment: boolean;
+    courses: Record<
+      string,
+      { label: string; minRaise: number; caps: { maxHc: number; normal: number; small: number }[] }
+    >;
     requiredDocs: string[];
   };
   hatarakikata: {

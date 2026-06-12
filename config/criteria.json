@@ -5,6 +5,11 @@
 
   "gyomukaizen": {
     "label": "業務改善助成金",
+    "fiscalYear": "令和8年度",
+    "source": "令和8年度業務改善助成金のご案内（厚生労働省 R8.4）",
+    "minRaiseYen": 50,
+    "rate": { "boundaryYen": 1050, "below": 0.8, "atOrAbove": 0.75 },
+    "smallEmployerMaxEmployees": 30,
     "smeMaxRegularEmployeesByCategory": {
       "小売業": 50,
       "サービス業": 100,
@@ -12,14 +17,46 @@
       "製造業その他": 300,
       "その他": 300
     },
-    "minWageGapYen": 50,
-    "requireWageRaisePlan": true,
-    "requireProductivityInvestment": true,
+    "courses": {
+      "50": {
+        "label": "50円コース",
+        "minRaise": 50,
+        "caps": [
+          { "maxHc": 1, "normal": 300000, "small": 400000 },
+          { "maxHc": 3, "normal": 400000, "small": 700000 },
+          { "maxHc": 5, "normal": 700000, "small": 700000 },
+          { "maxHc": 7, "normal": 900000, "small": 900000 },
+          { "maxHc": 9999, "normal": 1100000, "small": 1100000 }
+        ]
+      },
+      "70": {
+        "label": "70円コース",
+        "minRaise": 70,
+        "caps": [
+          { "maxHc": 1, "normal": 400000, "small": 500000 },
+          { "maxHc": 3, "normal": 500000, "small": 1000000 },
+          { "maxHc": 5, "normal": 1300000, "small": 1300000 },
+          { "maxHc": 7, "normal": 1800000, "small": 1800000 },
+          { "maxHc": 9999, "normal": 2300000, "small": 2300000 }
+        ]
+      },
+      "90": {
+        "label": "90円コース",
+        "minRaise": 90,
+        "caps": [
+          { "maxHc": 1, "normal": 900000, "small": 1000000 },
+          { "maxHc": 3, "normal": 1500000, "small": 2400000 },
+          { "maxHc": 5, "normal": 2700000, "small": 2700000 },
+          { "maxHc": 7, "normal": 3600000, "small": 3600000 },
+          { "maxHc": 9999, "normal": 4500000, "small": 4500000 }
+        ]
+      }
+    },
     "requiredDocs": [
       "交付申請書・事業実施計画書",
       "賃金台帳（事業場内最低賃金の確認）",
       "労働者名簿",
-      "就業規則または賃金規定（引上げ規定）",
+      "就業規則または賃金規定（引上げ後の事業場内最低賃金と同額を規定）",
       "設備等の見積書（原則相見積り）",
       "登記事項証明書（法人）／開業届（個人）"
     ]

@@ -25,6 +25,12 @@ function GrantCard({ g }: { g: GrantResult }) {
         <h3 className="text-lg font-bold text-slate-900">{g.label}</h3>
         <StatusBadge status={g.status} />
       </div>
+      {g.estimatedAmount && (
+        <div className="mt-3 rounded border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-900">
+          <span className="font-semibold">想定助成額：</span>
+          {g.estimatedAmount}
+        </div>
+      )}
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <List title="対象理由" items={g.reasons} tone="text-green-700" />
         <List title="不足要件" items={g.shortfalls} tone="text-amber-700" />
@@ -34,6 +40,9 @@ function GrantCard({ g }: { g: GrantResult }) {
       <div className="mt-4">
         <List title="必要書類" items={g.requiredDocs} tone="text-slate-600" />
       </div>
+      {g.source && (
+        <p className="mt-3 text-xs text-slate-400">出典：{g.source}</p>
+      )}
     </div>
   );
 }
