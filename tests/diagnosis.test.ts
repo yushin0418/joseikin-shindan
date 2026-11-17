@@ -137,6 +137,18 @@ describe("働き方改革推進支援助成金（労働時間短縮・年休促�
     expect(get("hatarakikata", r).status).toBe("○");
   });
 
+  it("「取り組みたいこと」は対象理由に混ぜず、成果目標は社労士が設定するアクションとして出す", () => {
+    const none = runDiagnosis({ ...base, hatarakiGoal1: false, hatarakiGoal2: false, hatarakiGoal3: false });
+    const g0 = get("hatarakikata", none);
+    expect(g0.reasons.some((x) => x.includes("取り組みたいこと"))).toBe(false);
+    expect(g0.actions.some((x) => x.includes("ヒヤリングして設定"))).toBe(true);
+
+    const picked = runDiagnosis({ ...base, hatarakiGoal1: true, hatarakiGoal2: false, hatarakiGoal3: false });
+    const g1 = get("hatarakikata", picked);
+    expect(g1.reasons.some((x) => x.includes("取り組みたいこと"))).toBe(false);
+    expect(g1.actions.some((x) => x.includes("お客様の希望") && x.includes("成果目標①"))).toBe(true);
+  });
+
   it("改善事業（設備）が無ければ△", () => {
     const r = runDiagnosis({ ...base, willInvestEquipment: false, equipmentName: "" });
     expect(get("hatarakikata", r).status).toBe("△");

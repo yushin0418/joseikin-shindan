@@ -154,8 +154,8 @@ const initial: FormState = {
   plannedConversions: 1,
   prioritySupportConversions: 1,
   conversionDate: "",
-  hatarakiGoal1: true,
-  hatarakiGoal2: true,
+  hatarakiGoal1: false, // 任意項目は未選択を初期値にする（迷った人の回答にならないように）
+  hatarakiGoal2: false,
   pastSubsidies: "",
   sharoshiContract: "なし",
   companyReasonLeavers: 0,

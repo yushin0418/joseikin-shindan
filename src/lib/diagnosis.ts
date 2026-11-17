@@ -257,12 +257,8 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   if (input.hatarakiGoal1) wants.push("残業（時間外労働）の削減 → 成果目標①");
   if (input.hatarakiGoal2) wants.push("有給休暇の取得促進 → 成果目標②③");
   if (input.hatarakiGoal3) wants.push("時間単位年休＋特別休暇 → 成果目標③");
-  // 「取り組みたいこと」は任意（未選択でも、成果目標は社労士が設定するため判定は下げない）
-  if (wants.length > 0) {
-    reasons.push(`取り組みたいこと：${wants.join("／")}（具体的な成果目標は社労士が設定）`);
-  } else {
-    reasons.push("取り組みたいことは未選択（任意。成果目標は社労士が設定します）");
-  }
+  // 「取り組みたいこと」は任意。要件を満たす理由ではないので「対象理由」には入れず、
+  // 次のアクション（成果目標は社労士がヒヤリングして設定）に回す。未選択でも判定は下げない。
 
   // 改善事業（設備・機器・研修・コンサル等）
   const hasInvest = input.willInvestEquipment && !!input.equipmentName;
@@ -296,8 +292,15 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   const metAll = isSme && input.hasLaborInsurance && hasInvest && workRulesExists(input);
   const status: Status = metAll ? "○" : "△";
 
+  // 成果目標は社労士が設定する（お客様の希望があれば参考にする）
+  actions.push(
+    wants.length > 0
+      ? `成果目標を社労士が設定する（お客様の希望：${wants.join("／")}）`
+      : "成果目標（残業削減・年休取得促進など）を社労士がヒヤリングして設定する",
+  );
+
   if (status === "○") {
-    actions.push("選択した成果目標を計画書に落とし込み、改善事業の見積書を取得");
+    actions.push("改善事業（設備・機器・研修・コンサル等）の見積書を取得する");
     actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出（令和8年11月30日まで）");
   } else {
     if (!input.hasLaborInsurance) actions.push("労災保険の適用状況を確認する");
