@@ -1,5 +1,7 @@
 import type { Criteria } from "./criteria";
 import { getCriteria } from "./criteria";
+import { DEFAULT_WARN_DAYS, deadlineInfo } from "./deadline";
+import type { DeadlineDef } from "./deadline";
 import type { DiagnosisInput } from "./validation";
 
 export type Status = "○" | "△" | "×";
@@ -22,6 +24,8 @@ export interface GrantResult {
   estimatedAmount?: string;
   /** 判定の根拠（出典） */
   source?: string;
+  /** 期限（日付のみ保存。「あと◯日」は表示のたびに計算する） */
+  deadlines?: DeadlineDef[];
 }
 
 export interface DiagnosisResult {
@@ -31,6 +35,8 @@ export interface DiagnosisResult {
   grants: GrantResult[];
   criteriaVersion: string;
   disclaimer: string;
+  /** 期限の注意喚起を始める残り日数（表示時に使う） */
+  deadlineWarnDays?: number;
 }
 
 /** ○=2, △=1, ×=0 として要件充足度からステータスを決める小ヘルパ */
@@ -287,7 +293,7 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
   risks.push(...complianceRisks(input));
   risks.push("交付決定前に取組（発注・支払い等）を行うと対象外。");
   risks.push("成果目標が未達の場合、支給額の減額または不支給となる。");
-  risks.push("申請期限：交付申請は令和8年11月30日（予算により早期締切あり）、事業完了は令和9年1月31日。");
+  // 申請期限は config/criteria.json の deadlines から runDiagnosis() が付与する（日付の直書きはしない）
 
   const metAll = isSme && input.hasLaborInsurance && hasInvest && workRulesExists(input);
   const status: Status = metAll ? "○" : "△";
@@ -301,7 +307,7 @@ function judgeHatarakikata(input: DiagnosisInput, c: Criteria): GrantResult {
 
   if (status === "○") {
     actions.push("改善事業（設備・機器・研修・コンサル等）の見積書を取得する");
-    actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出（令和8年11月30日まで）");
+    actions.push("交付申請書を管轄の労働局 雇用環境・均等部（室）へ提出する");
   } else {
     if (!input.hasLaborInsurance) actions.push("労災保険の適用状況を確認する");
     if (!hasInvest) actions.push("改善事業（機器・研修・コンサル等）を具体化する");
@@ -454,15 +460,54 @@ function overall(grants: GrantResult[]): {
 }
 
 /** メインのエントリポイント。設定ファイルを差し替えるだけで判定が変わる */
+/**
+ * 申請期限のルールを適用する（期限は config/criteria.json の deadlines）。
+ * - 期限情報（日付）を結果に付与する。
+ * - blocksApplication の期限を過ぎていれば申請不可として判定を「×」に落とす。
+ * - 期限が近い（当日含む）場合は、不支給リスクと次のアクションに注意喚起を足す。
+ */
+function applyDeadlines(g: GrantResult, c: Criteria, now: Date): GrantResult {
+  const defs: DeadlineDef[] | undefined = c.deadlines?.[g.key];
+  if (!defs || defs.length === 0) return g;
+
+  const warn = c.deadlineWarnDays ?? DEFAULT_WARN_DAYS;
+  const out: GrantResult = {
+    ...g,
+    shortfalls: [...g.shortfalls],
+    risks: [...g.risks],
+    actions: [...g.actions],
+    deadlines: defs,
+  };
+
+  for (const d of defs.filter((x) => x.blocksApplication)) {
+    const info = deadlineInfo(d, now, warn);
+    if (info.state === "passed") {
+      out.status = "×";
+      out.shortfalls.unshift(
+        `${info.text}。今年度の受付は終了している可能性があるため、次年度の要領・受付時期の確認が必要`,
+      );
+      out.actions.unshift("次年度の要領・受付時期を確認し、改めて診断する");
+    } else if (info.state === "today" || info.state === "soon") {
+      out.risks.unshift(`${info.text}。予算の都合で期限前に受付が終了する場合がある`);
+      if (out.status !== "×") {
+        out.actions.unshift("申請期限が迫っています。交付申請の準備を最優先で進める");
+      }
+    }
+  }
+  return out;
+}
+
+/** now は期限判定の基準時刻（既定は現在。テストでは固定できる） */
 export function runDiagnosis(
   input: DiagnosisInput,
   criteria: Criteria = getCriteria(),
+  now: Date = new Date(),
 ): DiagnosisResult {
   const grants: GrantResult[] = [
     judgeGyomukaizen(input, criteria),
     judgeHatarakikata(input, criteria),
     judgeCareerUp(input, criteria),
-  ];
+  ].map((g) => applyDeadlines(g, criteria, now));
 
   const o = overall(grants);
 
@@ -473,5 +518,6 @@ export function runDiagnosis(
     grants,
     criteriaVersion: criteria.version,
     disclaimer: criteria.disclaimer,
+    deadlineWarnDays: criteria.deadlineWarnDays ?? DEFAULT_WARN_DAYS,
   };
 }

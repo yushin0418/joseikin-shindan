@@ -1,7 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { runDiagnosis } from "@/lib/diagnosis";
 import { getCriteria } from "@/lib/criteria";
 import type { DiagnosisInput } from "@/lib/validation";
+
+// 既存テストは実時計に依存させない（申請期限 2026-11-30 を過ぎると判定が×になるため）。
+// 期限が遠い日（日本時間 2026-10-01）に固定する。期限のテストは tests/deadline.test.ts。
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-01T00:00:00+09:00"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 // 記入例（申請ひな形株式会社）相当の全要件充足ケース
 const base: DiagnosisInput = {

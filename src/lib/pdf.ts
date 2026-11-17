@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import type { DiagnosisResult, GrantResult } from "./diagnosis";
+import { DEFAULT_WARN_DAYS, deadlineInfo } from "./deadline";
 import type { DiagnosisInput } from "./validation";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -81,7 +82,8 @@ export function generateReportPdf(
       doc.moveDown(0.8);
 
       // 各助成金
-      result.grants.forEach((g) => grantBlock(doc, useFont, g));
+      const warnDays = result.deadlineWarnDays ?? DEFAULT_WARN_DAYS;
+      result.grants.forEach((g) => grantBlock(doc, useFont, g, warnDays));
 
       // 社労士への相談事項（全助成金のアクションを集約）
       sectionTitle(doc, useFont, "社労士への相談事項");
@@ -104,10 +106,18 @@ export function generateReportPdf(
   });
 }
 
+const DEADLINE_COLOR: Record<string, string> = {
+  ok: "#374151",
+  soon: "#b45309",
+  today: "#b91c1c",
+  passed: "#b91c1c",
+};
+
 function grantBlock(
   doc: PDFKit.PDFDocument,
   useFont: () => PDFKit.PDFDocument,
   g: GrantResult,
+  warnDays: number,
 ) {
   // 改ページ余裕がなければ改ページ
   if (doc.y > 680) doc.addPage();
@@ -118,6 +128,19 @@ function grantBlock(
     .text(`■ ${g.label}　判定：`, { continued: true });
   useFont().fillColor(STATUS_COLOR[g.status] ?? "#111827").text(g.status);
   doc.moveDown(0.2);
+
+  // 期限（PDF を作る時点の日付で「あと◯日」を計算する）
+  if (g.deadlines && g.deadlines.length > 0) {
+    const now = new Date();
+    for (const d of g.deadlines) {
+      const info = deadlineInfo(d, now, warnDays);
+      useFont()
+        .fontSize(10)
+        .fillColor(DEADLINE_COLOR[info.state] ?? "#374151")
+        .text(`期限：${info.text}${d.note ? `（${d.note}）` : ""}`, { width: 495 });
+    }
+    doc.moveDown(0.2);
+  }
 
   if (g.estimatedAmount) {
     useFont().fontSize(10).fillColor("#1d4ed8").text(`想定助成額：${g.estimatedAmount}`, { width: 495 });

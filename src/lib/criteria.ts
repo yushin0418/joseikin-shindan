@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { DeadlineDef } from "./deadline";
 
 /** config/criteria.json の型定義 */
 export interface Criteria {
@@ -43,6 +44,10 @@ export interface Criteria {
     additions: Record<string, { 中小企業: number; 大企業: number }>;
     requiredDocs: string[];
   };
+  /** 期限の注意喚起を始める残り日数 */
+  deadlineWarnDays?: number;
+  /** 助成金ごとの期限（日付は ISO 形式 YYYY-MM-DD）。法改正・年度更新はこの設定だけ直せばよい */
+  deadlines?: Record<string, DeadlineDef[]>;
   commonRisks: string[];
 }
 
