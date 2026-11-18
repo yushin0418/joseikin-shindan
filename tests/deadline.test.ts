@@ -12,6 +12,10 @@ const base: DiagnosisInput = {
   industryCategory: "その他",
   orgType: "法人",
   capitalYen: 10000000,
+  prefecture: "熊本県", // 発効予定 2026-12-01 → 業務改善の申請期間の末日は 2026-11-30（働き方改革と同じ日）
+  establishmentEmployeeCount: 0,
+  deemedLargeEnterprise: false,
+  priceSurgeRequirement: false,
   contactName: "",
   contactTel: "",
   contactEmail: "",

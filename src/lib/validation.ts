@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getPrefectureMinWage } from "./minWage";
 
 const intNonNeg = z.coerce.number().int().min(0, "0以上で入力してください");
 const yen = z.coerce.number().int().min(0, "0以上で入力してください");
@@ -15,6 +16,11 @@ export const diagnosisInputSchema = z
     industryCategory: z.enum(["小売業", "サービス業", "卸売業", "製造業その他", "その他"]),
     orgType: z.enum(["法人", "個人事業"]),
     capitalYen: yen,
+    // 都道府県は未選択("")も許容（古い記録・API互換）。選ばれた場合は公式表にある名前だけ受け付ける
+    prefecture: z.string().trim().max(10).refine((v) => v === "" || getPrefectureMinWage(v) !== null, "都道府県を選択してください").optional(),
+    establishmentEmployeeCount: intNonNeg.optional(),
+    deemedLargeEnterprise: z.boolean().optional(),
+    priceSurgeRequirement: z.boolean().optional(),
     contactName: z.string().trim().max(80).optional().or(z.literal("")),
     contactTel: z.string().trim().max(40).optional().or(z.literal("")),
     contactEmail: z.string().trim().email("メールアドレスの形式が不正です").max(120).optional().or(z.literal("")),

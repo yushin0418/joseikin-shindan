@@ -23,6 +23,10 @@ const base: DiagnosisInput = {
   industryCategory: "その他",
   orgType: "法人",
   capitalYen: 10000000,
+  prefecture: "熊本県", // 令和8年度 1,092円（改定前 1,034円）・発効予定 2026-12-01 → 申請期間の末日は 2026-11-30
+  establishmentEmployeeCount: 0,
+  deemedLargeEnterprise: false,
+  priceSurgeRequirement: false,
   contactName: "",
   contactTel: "",
   contactEmail: "",
@@ -146,6 +150,105 @@ describe("業務改善助成金（令和8年度のご案内・Q&A・改正のお
     expect(risks).toContain("申請より後");
     expect(risks).toContain("パソコン");
     expect(risks).toContain("税抜");
+  });
+});
+
+describe("業務改善助成金：都道府県ごとの申請期間・地域別最低賃金（交付要領・Q&A・令和8年度答申状況）", () => {
+  const at = (iso: string) => new Date(iso);
+  const gy = (over: Partial<DiagnosisInput>, now: string) =>
+    grant(runDiagnosis({ ...base, ...over }, undefined, at(now)), "gyomukaizen");
+
+  it("申請期間の末日＝「発効日の前日」と「11/30」の早い方：東京(10/1発効)は9/30、熊本(12/1)は11/30", async () => {
+    const { gyomukaizenApplyEnd } = await import("@/lib/diagnosis");
+    expect(gyomukaizenApplyEnd("東京都", "2026-11-30")).toBe("2026-09-30");
+    expect(gyomukaizenApplyEnd("兵庫県", "2026-11-30")).toBe("2026-09-30");
+    expect(gyomukaizenApplyEnd("熊本県", "2026-11-30")).toBe("2026-11-30");
+    expect(gyomukaizenApplyEnd("沖縄県", "2026-11-30")).toBe("2026-11-30"); // 12/2発効でも11/30が早い
+    expect(gyomukaizenApplyEnd("", "2026-11-30")).toBeNull();
+  });
+
+  it("末日が土日なら前開庁日に繰り上げる（Q&A問50）", async () => {
+    const { gyomukaizenApplyEnd } = await import("@/lib/diagnosis");
+    // 福井・奈良：10/4(日)発効 → 前日10/3(土) → 前開庁日 10/2(金)
+    expect(gyomukaizenApplyEnd("福井県", "2026-11-30")).toBe("2026-10-02");
+    expect(gyomukaizenApplyEnd("奈良県", "2026-11-30")).toBe("2026-10-02");
+    // 広島：10/11(日)発効 → 前日10/10(土) → 前開庁日 10/9(金)
+    expect(gyomukaizenApplyEnd("広島県", "2026-11-30")).toBe("2026-10-09");
+    // 石川：10/3(土)発効 → 前日10/2(金)で繰り上げ不要
+    expect(gyomukaizenApplyEnd("石川県", "2026-11-30")).toBe("2026-10-02");
+    // 島根：10/10(土)発効 → 前日10/9(金)で繰り上げ不要
+    expect(gyomukaizenApplyEnd("島根県", "2026-11-30")).toBe("2026-10-09");
+  });
+
+  it("末日が祝日のときも前開庁日に繰り上げる：祝日(10/12スポーツの日)を設定から読む", async () => {
+    const { prevBusinessDay } = await import("@/lib/deadline");
+    const { getClosedDays } = await import("@/lib/minWage");
+    // 10/12(月・祝) → 前開庁日は 10/9(金)（10/10土・10/11日は閉庁）
+    expect(prevBusinessDay("2026-10-12", getClosedDays())).toBe("2026-10-09");
+  });
+
+  it("東京都は令和8年11月18日時点で申請期間が終了＝×（10/1発効のため9/30が末日）", () => {
+    const g = gy({ prefecture: "東京都", inHouseMinWage: 1226 }, "2026-11-18T12:00:00+09:00");
+    expect(g.status).toBe("×");
+    expect(g.shortfalls.some((s) => s.includes("過ぎています"))).toBe(true);
+  });
+
+  it("熊本県は令和8年11月18日時点でまだ申請できる＝期限は11/30で「あと12日」", () => {
+    const g = gy({}, "2026-11-18T12:00:00+09:00");
+    expect(g.status).toBe("○");
+    expect(g.risks[0]).toContain("あと12日");
+    const apply = g.deadlines?.find((d) => d.key === "apply");
+    expect(apply?.date).toBe("2026-11-30");
+    expect(g.deadlines?.some((d) => d.key === "raise" && d.date === "2026-11-30")).toBe(true);
+  });
+
+  it("本日時点で申請期間が残っているのは岩手・熊本・沖縄の3県（令和8年11月18日）", async () => {
+    const { gyomukaizenOpenPrefectures } = await import("@/lib/diagnosis");
+    const open = gyomukaizenOpenPrefectures(at("2026-11-18T12:00:00+09:00"), "2026-11-30");
+    expect(open.sort()).toEqual(["岩手県", "沖縄県", "熊本県"].sort());
+  });
+
+  it("都道府県が未入力なら○にならず、都道府県の入力を求める", () => {
+    const g = gy({ prefecture: "" }, "2026-10-01T00:00:00+09:00");
+    expect(g.status).not.toBe("○");
+    expect(g.shortfalls.some((s) => s.includes("都道府県が未入力"))).toBe(true);
+  });
+
+  it("対象事業場：令和8年度の地域別最賃（熊本1,092円）以上は対象外（Q&A問3）／改定前の額（1,034円）を下回るのも対象外（Q&A問6）", () => {
+    expect(gy({ inHouseMinWage: 1092 }, "2026-10-01T00:00:00+09:00").status).not.toBe("○");
+    const below = gy({ inHouseMinWage: 1030 }, "2026-10-01T00:00:00+09:00");
+    expect(below.status).not.toBe("○");
+    expect(below.shortfalls.some((s) => s.includes("申請時点で適用されている地域別最低賃金"))).toBe(true);
+    expect(gy({ inHouseMinWage: 1034 }, "2026-10-01T00:00:00+09:00").status).toBe("○"); // ちょうど改定前の額は可
+  });
+
+  it("みなし大企業は対象外（交付要綱第2条第2項）", () => {
+    const g = gy({ deemedLargeEnterprise: true }, "2026-10-01T00:00:00+09:00");
+    expect(g.status).not.toBe("○");
+    expect(g.shortfalls.some((s) => s.includes("みなし大企業"))).toBe(true);
+  });
+
+  it("特例事業者：物価高騰等要件に該当すれば、事業場内最賃が1,050円以上でも「10人以上」の上限区分（600万円）が使える（別紙2・別表第2）", () => {
+    const over = { inHouseMinWage: 1060, wageRaiseHeadcount: 10, employeeCount: 12, equipmentPrice: 9000000 };
+    // 熊本の令和8年度は1,092円なので、1,060円は対象範囲内（改定前1,034円以上・1,092円未満）
+    const on = gy({ ...over, priceSurgeRequirement: true }, "2026-10-01T00:00:00+09:00");
+    expect(on.estimatedAmount).toContain("6,000,000");
+    expect(on.estimatedAmount).toContain("10人以上区分");
+    const off = gy({ ...over, priceSurgeRequirement: false }, "2026-10-01T00:00:00+09:00");
+    expect(off.estimatedAmount).not.toContain("10人以上区分");
+  });
+
+  it("「事業場規模30人未満」は申請事業場の人数で判定する（会社全体が50人でも、事業場が20人なら（）内の上限）", () => {
+    // 90円コース・2〜3人：通常150万円／事業場規模30人未満は240万円
+    const small = gy({ employeeCount: 50, establishmentEmployeeCount: 20, wageRaiseHeadcount: 3, equipmentPrice: 6000000 }, "2026-10-01T00:00:00+09:00");
+    expect(small.estimatedAmount).toContain("2,400,000");
+    const large = gy({ employeeCount: 50, establishmentEmployeeCount: 40, wageRaiseHeadcount: 3, equipmentPrice: 6000000 }, "2026-10-01T00:00:00+09:00");
+    expect(large.estimatedAmount).toContain("1,500,000");
+  });
+
+  it("交付額は1,000円未満切捨て（交付要綱第4条第2項）：設備1,234,567円×4/5 → 987,000円", () => {
+    const g = gy({ wageRaiseHeadcount: 8, equipmentPrice: 1234567 }, "2026-10-01T00:00:00+09:00");
+    expect(g.estimatedAmount).toContain("987,000");
   });
 });
 

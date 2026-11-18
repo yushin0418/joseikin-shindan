@@ -1,7 +1,8 @@
 import type { Criteria } from "./criteria";
 import { getCriteria } from "./criteria";
-import { DEFAULT_WARN_DAYS, deadlineInfo } from "./deadline";
+import { DEFAULT_WARN_DAYS, addDays, deadlineInfo, earlierDate, formatReiwa, jstDate, prevBusinessDay } from "./deadline";
 import type { DeadlineDef } from "./deadline";
+import { getClosedDays, getPrefectureMinWage, allPrefectureMinWages } from "./minWage";
 import type { DiagnosisInput } from "./validation";
 
 export type Status = "○" | "△" | "×";
@@ -66,13 +67,38 @@ function smeInfo(input: DiagnosisInput, g: Criteria["gyomukaizen"]) {
 const man = (yen: number) => `${(yen / 10000).toLocaleString()}万円`;
 
 /**
+ * 業務改善助成金の申請期間の末日（令和8年度）。
+ * 「申請事業場の都道府県で適用される令和8年度地域別最低賃金の発効日の前日」または「同年11月30日」の
+ * いずれか早い日（交付要領 第3の1）。その日が行政機関の休日なら前開庁日（Q&A問50）。
+ * 都道府県が分からなければ null。
+ */
+export function gyomukaizenApplyEnd(prefecture: string | null | undefined, cutoffIso: string): string | null {
+  const p = getPrefectureMinWage(prefecture);
+  if (!p) return null;
+  return prevBusinessDay(earlierDate(addDays(p.effective, -1), cutoffIso), getClosedDays());
+}
+
+/** 指定日時点でまだ業務改善助成金の申請を受け付けている都道府県（申請期間の末日が今日以降） */
+export function gyomukaizenOpenPrefectures(now: Date, cutoffIso: string): string[] {
+  const today = jstDate(now);
+  return Object.keys(allPrefectureMinWages()).filter((name) => {
+    const end = gyomukaizenApplyEnd(name, cutoffIso);
+    return end !== null && end >= today;
+  });
+}
+
+/**
  * 入力からコンプライアンス系の不支給リスクを抽出する。助成金ごとに根拠のあるものだけを出す。
  * （入力項目 noFraudPast3y は列名が古いまま。内容は「不正受給がない」で、期間は制度に合わせて5年として扱う）
  */
 function complianceRisks(input: DiagnosisInput, key: GrantResult["key"]): string[] {
   const r: string[] = [];
   if (!input.noFraudPast3y) {
-    r.push("過去5年以内に助成金の不正受給があるため、不支給となる（5年間は受給できない）。");
+    r.push(
+      key === "gyomukaizen"
+        ? "過去5年以内に補助金等の決定の取消しその他これに準ずる処分（業務改善助成金・労災保険の助成金・雇用保険の給付金の不正受給による不支給・取消し等）を受けている場合は不交付（交付要綱第4条第4項第四号、交付要領第2の15）。"
+        : "過去5年以内に助成金の不正受給があるため、不支給となる（5年間は受給できない）。",
+    );
   }
   if (!input.noLaborLawViolation) {
     r.push(
@@ -88,7 +114,7 @@ function complianceRisks(input: DiagnosisInput, key: GrantResult["key"]): string
       );
     } else if (key === "gyomukaizen") {
       r.push(
-        `直近6か月に会社都合離職者が${input.companyReasonLeavers}名。解雇は本助成金の不交付事由（案内）のため、内容の確認が必要。`,
+        `直近6か月に会社都合離職者が${input.companyReasonLeavers}名。申請書の提出日の前日から6か月前の日〜実績報告の日（または賃金引上げから6か月経過日）までの間に、事業場の労働者を解雇した場合、勧奨退職・希望退職の募集で退職した場合は不交付（交付要綱第4条第4項第一号ア。天災等や労働者の責に帰す解雇を除く）。`,
       );
     }
     // 働き方改革の基本の不交付事由に解雇は含まれない（賃上げ加算を追加する場合のみ関係）ため出さない
@@ -120,7 +146,7 @@ function gyomukaizenCap(
   return isSmallEmployer ? band.small : band.normal;
 }
 
-function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
+function judgeGyomukaizen(input: DiagnosisInput, c: Criteria, now: Date): GrantResult {
   const g = c.gyomukaizen;
   const reasons: string[] = [];
   const shortfalls: string[] = [];
@@ -128,12 +154,27 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
   const actions: string[] = [];
   let estimatedAmount: string | undefined;
 
-  // 1) 中小企業判定（業種区分ごとに 資本金以下 OR 従業員以下）
+  // 0) 申請事業場の都道府県：地域別最低賃金と申請期限の判定に必須
+  const pref = getPrefectureMinWage(input.prefecture);
+  const cutoff = c.deadlines?.gyomukaizen?.find((d) => d.key === "apply")?.date ?? "2026-11-30";
+  if (!pref) {
+    const open = gyomukaizenOpenPrefectures(now, cutoff);
+    shortfalls.push(
+      `申請事業場の都道府県が未入力のため、地域別最低賃金と申請期限を判定できません。申請期間は「地域別最低賃金の発効日の前日」と「11月30日」の早い方までのため、都道府県の入力が必要です` +
+        (open.length < 47 ? `（本日時点で申請期間が残っているのは ${open.length > 0 ? open.join("・") : "なし"}）` : ""),
+    );
+  }
+
+  // 1) 中小企業判定（業種区分ごとに 資本金以下 OR 従業員以下。ただしみなし大企業は除く：要綱第2条第2項）
   const sme = smeInfo(input, g);
-  const isSme = sme.isSme;
-  if (isSme) {
+  const isSme = sme.isSme && !input.deemedLargeEnterprise;
+  if (input.deemedLargeEnterprise) {
+    shortfalls.push(
+      "「みなし大企業」（大企業が発行済株式の1/2以上を所有／2/3以上を大企業が所有／大企業の役員・職員が役員の1/2以上を兼ねる 等）に該当する場合は、中小企業事業者から除かれ対象外です（交付要綱第2条第2項）",
+    );
+  } else if (isSme) {
     reasons.push(
-      `中小企業に該当（${input.industryCategory}：従業員${input.employeeCount}名≦${sme.empMax}名${sme.byCap ? `／資本金${man(input.capitalYen)}≦${man(sme.capMax)}` : ""}）`,
+      `中小企業に該当（${input.industryCategory}：従業員${input.employeeCount}名≦${sme.empMax}名${sme.byCap ? `／資本金${man(input.capitalYen)}≦${man(sme.capMax)}` : ""}）。みなし大企業には該当しない（入力より）`,
     );
   } else {
     shortfalls.push(
@@ -151,22 +192,40 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
     );
   }
 
-  // 2) 事業場内最低賃金が地域別最低賃金「未満」であること（要領上の対象要件）
+  // 2) 事業場内最低賃金が、申請時点の地域別最低賃金以上かつ令和8年度（改定後）の地域別最低賃金未満であること
+  //    （交付要綱 別表第1「対象事業場」、Q&A問3・問6）。都道府県が分かれば公式表の値で判定する。
   let wageEligible = true;
+  const regionalNew = pref ? pref.r8 : input.regionalMinWage > 0 ? input.regionalMinWage : 0;
+  const yen = (n: number) => `${n.toLocaleString()}円`;
   if (input.inHouseMinWage <= 0) {
-    shortfalls.push("事業場内最低賃金が未入力（追加確認が必要）");
-  } else if (input.regionalMinWage <= 0) {
-    reasons.push(`事業場内最低賃金 ${input.inHouseMinWage.toLocaleString()}円`);
-    shortfalls.push("地域別最低賃金が未入力のため「事業場内＜地域別」を判定できません（社労士が照合）");
-  } else if (input.inHouseMinWage < input.regionalMinWage) {
-    reasons.push(
-      `事業場内最低賃金${input.inHouseMinWage.toLocaleString()}円 ＜ 地域別最低賃金${input.regionalMinWage.toLocaleString()}円（対象要件を充足）`,
-    );
-  } else {
     wageEligible = false;
-    shortfalls.push(
-      `事業場内最低賃金${input.inHouseMinWage.toLocaleString()}円が地域別最低賃金${input.regionalMinWage.toLocaleString()}円以上です。本助成金は事業場内最賃が地域別最賃「未満」であることが要件のため、対象外の可能性`,
-    );
+    shortfalls.push("事業場内最低賃金が未入力（追加確認が必要）");
+  } else if (regionalNew <= 0) {
+    wageEligible = false;
+    reasons.push(`事業場内最低賃金 ${yen(input.inHouseMinWage)}`);
+    shortfalls.push("地域別最低賃金が分からないため「事業場内最賃＜令和8年度の地域別最賃」を判定できません（都道府県を入力してください）");
+  } else {
+    const regionalLabel = pref
+      ? `${input.prefecture}の令和8年度の地域別最低賃金 ${yen(pref.r8)}（改定前 ${yen(pref.r7)}・発効予定 ${formatReiwa(pref.effective)}）`
+      : `地域別最低賃金 ${yen(regionalNew)}（入力値）`;
+    // 申請時点で適用されている地域別最賃：発効日前は改定前（令和7年度）の額、発効日以降は改定後の額
+    const today = jstDate(now);
+    const currentRegional = pref ? (today < pref.effective ? pref.r7 : pref.r8) : null;
+    if (input.inHouseMinWage >= regionalNew) {
+      wageEligible = false;
+      shortfalls.push(
+        `事業場内最低賃金${yen(input.inHouseMinWage)}が、${regionalLabel}以上です。事業場内最賃が令和8年度の地域別最賃「未満」であることが要件のため対象外です（Q&A問3）`,
+      );
+    } else if (currentRegional !== null && input.inHouseMinWage < currentRegional) {
+      wageEligible = false;
+      shortfalls.push(
+        `事業場内最低賃金${yen(input.inHouseMinWage)}が、申請時点で適用されている地域別最低賃金${yen(currentRegional)}を下回っています。申請時点の地域別最賃を下回る事業場は助成対象になりません（Q&A問6）。先に最低賃金法の水準まで是正が必要です`,
+      );
+    } else {
+      reasons.push(
+        `事業場内最低賃金${yen(input.inHouseMinWage)} ＜ ${regionalLabel}（対象要件を充足）`,
+      );
+    }
   }
 
   // 3) 賃上げ予定（50円以上）→ コース判定
@@ -205,16 +264,23 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
 
   // 5) 想定助成額の算定（要領の上限額表 × 助成率）
   if (course && input.wageRaiseHeadcount > 0 && hasInvest && input.inHouseMinWage > 0) {
-    // 「事業場規模30人未満」は申請事業場の規模で判断される。入力は会社全体の従業員数のため近似
-    const isSmallEmployer = input.employeeCount < g.smallEmployerMaxEmployees;
-    // 「10人以上」の上限区分は特例事業者（事業場内最賃1,050円未満 等）が10人以上を引き上げる場合のみ
-    const isSpecialEmployer = input.inHouseMinWage < g.rate.boundaryYen;
+    // 「事業場規模30人未満」は申請事業場の常時使用労働者数で判断する（事業実施計画書は、企業全体と事業場の
+    // 人数を別欄で記入させる）。事業場の人数が未入力なら、会社全体の従業員数で代用する。
+    const establishment =
+      (input.establishmentEmployeeCount ?? 0) > 0 ? (input.establishmentEmployeeCount as number) : input.employeeCount;
+    const isSmallEmployer = establishment < g.smallEmployerMaxEmployees;
+    // 特例事業者＝賃金要件（事業場内最賃1,050円未満）または物価高騰等要件（別紙2）。
+    // 「10人以上」の上限区分（別表第2）は、特例事業者が10人以上を引き上げる場合のみ。
+    const wageRequirement = input.inHouseMinWage < g.rate.boundaryYen;
+    const isSpecialEmployer = wageRequirement || !!input.priceSurgeRequirement;
     const useTenPlus = input.wageRaiseHeadcount >= 10 && isSpecialEmployer;
     const cap = useTenPlus
       ? course.tenPlus
       : gyomukaizenCap(course, input.wageRaiseHeadcount, isSmallEmployer);
     const rate = input.inHouseMinWage < g.rate.boundaryYen ? g.rate.below : g.rate.atOrAbove;
-    const byRate = Math.floor((input.equipmentPrice ?? 0) * rate);
+    // 交付額の1,000円未満は切り捨て（交付要綱第4条第2項）
+    const floor1000 = (n: number) => Math.floor(n / 1000) * 1000;
+    const byRate = floor1000((input.equipmentPrice ?? 0) * rate);
     const amount = Math.min(byRate, cap);
     const ratePct = `${Math.round(rate * 100)}%`;
     const sizeLabel = useTenPlus
@@ -225,16 +291,21 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
     estimatedAmount =
       `約 ${amount.toLocaleString()}円` +
       `（${course.label}・${sizeLabel}・対象${input.wageRaiseHeadcount}名 → 上限${cap.toLocaleString()}円、` +
-      `設備費${(input.equipmentPrice ?? 0).toLocaleString()}円×助成率${ratePct}=${byRate.toLocaleString()}円 の少ない方）`;
+      `設備費${(input.equipmentPrice ?? 0).toLocaleString()}円×助成率${ratePct}=${byRate.toLocaleString()}円 の少ない方。1,000円未満切捨て）`;
     reasons.push(`想定助成額：${estimatedAmount}`);
     if (input.wageRaiseHeadcount >= 10 && !isSpecialEmployer) {
       shortfalls.push(
-        "引上げ人数10人以上の上限区分は特例事業者（事業場内最低賃金1,050円未満、または物価高騰等要件に該当）のみ対象です。現在の入力では「8人以上」の区分で算定しています（物価高騰等要件＝利益率が前年度比3%ポイント以上低下に該当する場合は要確認）",
+        "引上げ人数10人以上の上限区分は特例事業者（事業場内最低賃金1,050円未満、または物価高騰等要件に該当）のみ対象です。現在の入力では「8人以上」の区分で算定しています",
       );
     }
-    if (input.hasBranch) {
+    if (input.priceSurgeRequirement) {
       shortfalls.push(
-        "上限額の区分「事業場規模30人未満」は申請する事業場の規模で判断されます。入力の従業員数は会社全体のため、支店がある場合は申請事業場の人数で要確認",
+        "物価高騰等要件を使う場合は、申出書（売上高総利益率または売上高営業利益率。最近6か月平均が前年同期比3%ポイント以上低下）と、その数値を証する書類（月次損益計算書・試算表 等）を交付申請時に提出する必要があります（交付要領 別紙2）",
+      );
+    }
+    if (input.hasBranch && !((input.establishmentEmployeeCount ?? 0) > 0)) {
+      shortfalls.push(
+        "上限額の区分「事業場規模30人未満」は申請する事業場の人数で判断します。支店・複数の事業場がある場合は、申請する事業場の常時使用労働者数を入力してください（未入力のため会社全体の従業員数で代用しています）",
       );
     }
   }
@@ -242,17 +313,20 @@ function judgeGyomukaizen(input: DiagnosisInput, c: Criteria): GrantResult {
   // リスク（対象要件とは分離。要領・案内に基づく）
   risks.push(...c.commonRisks);
   risks.push(...complianceRisks(input, "gyomukaizen"));
-  risks.push("交付決定前に設備の導入（納品・契約・支払い）を行うと助成の対象にならない（案内・Q&A問26）。");
-  risks.push("賃金引上げは申請より後に行う必要がある（引上げ後の申請は不可）。地域別最低賃金の発効に合わせる場合は、申請後〜発効日の前日までに引き上げる（改正のお知らせ）。");
-  risks.push("引上げ対象は、週所定労働時間20時間以上の雇用保険被保険者（雇入れ後6か月経過者）。");
-  risks.push("引上げ後の事業場内最低賃金と同額を就業規則等に定める必要がある（複数回に分けた引上げは不可）。");
-  risks.push("助成対象経費は税抜で判断。パソコン・スマホ・タブレット等は原則対象外（特例事業者の物価高騰等要件に該当する場合のみ新規導入が対象）、自動車（特殊用途自動車を除く）も対象外。");
-  risks.push("契約予定額が10万円（税抜）以上の設備は、同一条件の二者以上の見積書（相見積り）が原則必要。");
-  risks.push("同一事業所の申請は年度内1回まで。申請は事業場ごと。");
+  risks.push("交付決定前に設備の導入（納品・契約・支払い）を行うと助成の対象にならない（交付要領第2の8、Q&A問27）。");
+  risks.push("賃金引上げは交付申請より後に行う必要がある（引上げ日・就業規則の適用日が申請日より前だと対象外）。引上げは交付申請後から、申請事業場に適用される地域別最低賃金の発効日の前日までに実施し、複数回（二段階）に分けた引上げは認められない（交付要領第2の7、Q&A問15・18）。");
+  risks.push("引上げ前の事業場内最低賃金より賃金の低い労働者がいる場合は、雇用保険被保険者かどうかにかかわらず、その労働者も新しい事業場内最賃まで引き上げる必要がある（Q&A問11）。");
+  risks.push("引上げ対象は、申請書の提出日に雇用保険被保険者である労働者。事業場内最低賃金は雇入れ後6か月を経過した労働者を基準に算定する。賃金引上げは所定労働時間の短縮・所定労働日の減少を伴わないこと（交付要領第2の2・4）。");
+  risks.push("引き上げた賃金は、原則として事業実績報告書の提出日までに支払う必要がある。引上げ後の事業場内最低賃金と同額を就業規則等に定める（交付要領第2の7）。");
+  risks.push("申請期間の末日までに申請が労働局へ到達している必要がある（郵送は必着、来庁は8:30〜17:15、電子申請はJグランツで完了）。末日が行政機関の休日の場合は前開庁日（Q&A問50）。");
+  risks.push("助成対象経費は税抜で判断。パソコン・スマホ・タブレット等は原則対象外（特例事業者の物価高騰等要件に該当する場合のみ新規導入が対象）、自動車（特殊用途自動車を除く）も対象外。支払いは振込払い（ポイント・ギフトカード不可。クレジットカード等は交付決定年度の3月31日までに口座から引き落とされていること）。");
+  risks.push("契約予定額が10万円（税抜）以上の設備は、同一条件の二者以上の見積書（相見積り）が原則必要で、最低価格の者と契約する（交付要領第4）。");
+  risks.push("同一事業所の申請は年度内1回まで。申請と審査は事業場単位だが、同一事業主が複数の事業場で申請する場合は事業主単位で年間上限600万円（交付要領第2の6）。");
+  risks.push("国・地方公共団体から助成対象経費について他の補助金等を受けている場合は不交付（併給調整）。不正受給が発覚した場合の事業主名等の公表に同意していない場合も不交付（交付要綱第4条第4項）。");
   if (!input.hasWageLedger) risks.push("賃金台帳が未整備だと事業場内最低賃金の確認ができず申請に支障。");
 
-  // ステータス決定
-  const metAll = isSme && hasRaise && hasInvest && wageEligible && laborOk && costOk;
+  // ステータス決定（都道府県が未入力のときは、地域別最低賃金・申請期限を確認できないため○にしない）
+  const metAll = isSme && hasRaise && hasInvest && wageEligible && laborOk && costOk && !!pref;
   const noneCore = !hasRaise && !hasInvest;
   const status: Status = noneCore ? "×" : decideStatus(metAll, false);
 
@@ -478,6 +552,11 @@ function judgeCareerUp(input: DiagnosisInput, c: Criteria): GrantResult {
       `転換先の正規雇用労働者に「賞与または退職金（いずれか1制度以上）」かつ「昇給」が就業規則等で規定・適用されている必要があります（現在：${lacking.join("・")}）。転換前に制度を整備すること`,
     );
   }
+  if (treatmentOk) {
+    shortfalls.push(
+      "賞与・退職金・昇給は、就業規則等に「正社員に適用される」ことが明示的に分かるよう規定されている必要があり、企業規模や地域の賃金水準に照らして妥当な額・内容であること（Q&A ①-1 Q-1・Q-2）を確認",
+    );
+  }
 
   // 4) 転換制度の規定（就業規則・労働協約）
   if (input.canReviseWorkRules || workRulesExists(input)) {
@@ -496,7 +575,7 @@ function judgeCareerUp(input: DiagnosisInput, c: Criteria): GrantResult {
   // 6) 賃金3%以上増額（システム未判定）
   const ratePct = (cu.minWageIncreaseRate * 100).toFixed(0);
   shortfalls.push(
-    `転換後6か月の賃金を、転換前6か月より${ratePct}%以上増額する必要（増額幅は社労士が確認）`,
+    `転換後6か月の賃金を、転換前6か月より${ratePct}%以上増額する必要（増額幅は社労士が確認。令和8年10月1日以降に転換する場合、生涯設計手当・選択制企業型確定拠出年金の取扱いが変更されています：Q&A ①-4 Q-6）`,
   );
 
   // 7) 雇用保険適用
@@ -584,9 +663,42 @@ function overall(grants: GrantResult[]): {
  * - blocksApplication の期限を過ぎていれば申請不可として判定を「×」に落とす。
  * - 期限が近い（当日含む）場合は、不支給リスクと次のアクションに注意喚起を足す。
  */
-function applyDeadlines(g: GrantResult, c: Criteria, now: Date): GrantResult {
-  const defs: DeadlineDef[] | undefined = c.deadlines?.[g.key];
+function applyDeadlines(g: GrantResult, c: Criteria, now: Date, input: DiagnosisInput): GrantResult {
+  let defs: DeadlineDef[] | undefined = c.deadlines?.[g.key];
   if (!defs || defs.length === 0) return g;
+
+  // 業務改善助成金：申請期限は都道府県ごとに異なる（地域別最低賃金の発効日の前日と11/30の早い方）。
+  // 都道府県が分かれば、その県の期限に差し替え、賃金引上げの期限（発効日の前日）も添える。
+  if (g.key === "gyomukaizen") {
+    const pref = getPrefectureMinWage(input.prefecture);
+    const generic = defs.find((d) => d.key === "apply");
+    if (pref && generic) {
+      const end = gyomukaizenApplyEnd(input.prefecture, generic.date) as string;
+      const dayBefore = addDays(pref.effective, -1);
+      const rolled = end !== earlierDate(dayBefore, generic.date);
+      defs = defs.flatMap((d) => {
+        if (d.key === "apply") {
+          return [
+            {
+              ...d,
+              date: end,
+              note:
+                `${input.prefecture}の令和8年度地域別最低賃金の発効予定日（${formatReiwa(pref.effective)}）の前日、または${formatReiwa(generic.date)}のいずれか早い日` +
+                (rolled ? "（その日が行政機関の休日のため前開庁日）" : "") +
+                "。労働局への到達が必要（郵送は必着）。発効日は異議申出の状況により変更される場合がある",
+            },
+            {
+              key: "raise",
+              label: "賃金引上げの期限",
+              date: dayBefore,
+              note: "交付申請後から、申請事業場に適用される地域別最低賃金の発効日の前日までに実施（複数回に分けた引上げは不可）",
+            },
+          ];
+        }
+        return [d];
+      });
+    }
+  }
 
   const warn = c.deadlineWarnDays ?? DEFAULT_WARN_DAYS;
   const out: GrantResult = {
@@ -622,10 +734,10 @@ export function runDiagnosis(
   now: Date = new Date(),
 ): DiagnosisResult {
   const grants: GrantResult[] = [
-    judgeGyomukaizen(input, criteria),
+    judgeGyomukaizen(input, criteria, now),
     judgeHatarakikata(input, criteria),
     judgeCareerUp(input, criteria),
-  ].map((g) => applyDeadlines(g, criteria, now));
+  ].map((g) => applyDeadlines(g, criteria, now, input));
 
   const o = overall(grants);
 

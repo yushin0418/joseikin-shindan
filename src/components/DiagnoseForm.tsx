@@ -12,6 +12,10 @@ type FormState = {
   industryCategory: string;
   orgType: string;
   capitalYen: number;
+  prefecture: string;
+  establishmentEmployeeCount: number;
+  deemedLargeEnterprise: boolean;
+  priceSurgeRequirement: boolean;
   contactName: string;
   contactTel: string;
   contactEmail: string;
@@ -99,6 +103,10 @@ const initial: FormState = {
   industryCategory: "その他",
   orgType: "法人",
   capitalYen: 10000000,
+  prefecture: "", // 未選択から始める（選ぶと地域別最低賃金・業務改善助成金の申請期限を判定する）
+  establishmentEmployeeCount: 0,
+  deemedLargeEnterprise: false,
+  priceSurgeRequirement: false,
   contactName: "代表取締役 山田 花子",
   contactTel: "03-5954-0000",
   contactEmail: "",
@@ -168,6 +176,16 @@ const initial: FormState = {
 };
 
 const CATEGORIES = ["小売業", "サービス業", "卸売業", "製造業その他", "その他"];
+// 業種区分の表示名（保存する値は変えない）。区分は交付要領 別紙1（日本標準産業分類）に基づく
+const CATEGORY_LABELS: Record<string, string> = {
+  小売業: "小売業（飲食店を含む）",
+  サービス業: "サービス業（宿泊・医療福祉・教育・学術研究・生活関連・情報サービス・物品賃貸 など）",
+  卸売業: "卸売業",
+  製造業その他: "製造業・建設業・運輸業・不動産業など（卸売・小売・サービス以外すべて）",
+  その他: "その他（上記以外）",
+};
+
+type PrefectureWage = { r8: number; r7: number; effective: string };
 const STATUS3 = ["届出済み", "作成済み未届", "未作成"];
 const RETIREMENT = ["", "65歳", "60歳継続雇用", "定年なし"];
 const CONTRACTS = ["はい", "いいえ", "その他"];
@@ -212,12 +230,15 @@ function Select({
   onChange,
   options,
   placeholder,
+  labels,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
   placeholder?: string;
+  /** 保存する値 → 画面に出す表示名（省略時は値をそのまま表示） */
+  labels?: Record<string, string>;
 }) {
   return (
     <label className="block text-sm">
@@ -229,7 +250,7 @@ function Select({
       >
         {options.map((o) => (
           <option key={o} value={o}>
-            {o === "" ? (placeholder ?? "未選択") : o}
+            {o === "" ? (placeholder ?? "未選択") : (labels?.[o] ?? o)}
           </option>
         ))}
       </select>
@@ -265,17 +286,37 @@ export function DiagnoseForm() {
   const [csrf, setCsrf] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 都道府県ごとの地域別最低賃金（厚生労働省の答申状況）。選択肢と自動表示に使う
+  const [wages, setWages] = useState<Record<string, PrefectureWage>>({});
 
   useEffect(() => {
     fetch("/api/csrf")
       .then((r) => r.json())
       .then((d) => setCsrf(d.token))
       .catch(() => setError("初期化に失敗しました。再読み込みしてください。"));
+    fetch("/api/min-wage")
+      .then((r) => r.json())
+      .then((d) => setWages(d.prefectures ?? {}))
+      .catch(() => setWages({}));
   }, []);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
   const num = (v: string) => (v === "" ? 0 : Number(v));
+
+  // 都道府県を選んだら、その県の令和8年度の地域別最低賃金を入力欄に反映する（判定は公式の表を使う）
+  const selectedWage = wages[form.prefecture];
+  function choosePrefecture(name: string) {
+    setForm((f) => ({
+      ...f,
+      prefecture: name,
+      regionalMinWage: wages[name] ? wages[name].r8 : f.regionalMinWage,
+    }));
+  }
+  const reiwa = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return `令和${y - 2018}年${m}月${d}日`;
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -306,10 +347,27 @@ export function DiagnoseForm() {
         <Text label="会社名" value={form.companyName} onChange={(v) => set("companyName", v)} />
         <Text label="法人番号" value={form.corporateNumber} onChange={(v) => set("corporateNumber", v)} />
         <Text label="所在地" value={form.address} onChange={(v) => set("address", v)} />
+        <Select
+          label="申請する事業場がある都道府県（業務改善助成金の申請期限と、地域別最低賃金の判定に使います）"
+          value={form.prefecture}
+          onChange={choosePrefecture}
+          options={["", ...Object.keys(wages)]}
+          placeholder="選択してください"
+        />
         <Text label="業種" value={form.industry} onChange={(v) => set("industry", v)} />
-        <Select label="業種区分（中小企業判定用）" value={form.industryCategory} onChange={(v) => set("industryCategory", v)} options={CATEGORIES} />
+        <Select label="業種区分（中小企業判定用）" value={form.industryCategory} onChange={(v) => set("industryCategory", v)} options={CATEGORIES} labels={CATEGORY_LABELS} />
         <Select label="法人・個人事業" value={form.orgType} onChange={(v) => set("orgType", v)} options={["法人", "個人事業"]} />
         <Text label="資本金額（円）※中小企業判定用" type="number" value={form.capitalYen} onChange={(v) => set("capitalYen", num(v))} />
+        <Check
+          label="大企業の子会社などに当たる（例：大企業が株式の1/2以上を持っている／大企業の役員・職員が役員の半数以上を兼ねている）※業務改善助成金は対象外になります"
+          checked={form.deemedLargeEnterprise}
+          onChange={(v) => set("deemedLargeEnterprise", v)}
+        />
+        <Check
+          label="原材料費の高騰など外的要因で、直近6か月平均の売上高総利益率（または営業利益率）が前年同期より3%ポイント以上下がっている（業務改善助成金の特例）"
+          checked={form.priceSurgeRequirement}
+          onChange={(v) => set("priceSurgeRequirement", v)}
+        />
         <Text label="ご担当者名" value={form.contactName} onChange={(v) => set("contactName", v)} />
         <Text label="連絡先TEL" value={form.contactTel} onChange={(v) => set("contactTel", v)} />
         <Text label="メールアドレス" type="email" value={form.contactEmail} onChange={(v) => set("contactEmail", v)} />
@@ -318,9 +376,26 @@ export function DiagnoseForm() {
       </Section>
 
       <Section title="従業員（全体 = A+B+C+D）">
-        <Text label="従業員数（全体）" type="number" value={form.employeeCount} onChange={(v) => set("employeeCount", num(v))} />
+        <Text label="従業員数（全体。役員を除く。日雇い・2か月以内の契約・試用14日以内の人は除き、パート・アルバイトは含む）" type="number" value={form.employeeCount} onChange={(v) => set("employeeCount", num(v))} />
+        <Text label="うち、申請する事業場（工場・店舗・事務所など）の人数（会社が1か所だけなら空欄か同じ人数）" type="number" value={form.establishmentEmployeeCount} onChange={(v) => set("establishmentEmployeeCount", num(v))} />
         <Text label="会社内の最低賃金（円）" type="number" value={form.inHouseMinWage} onChange={(v) => set("inHouseMinWage", num(v))} />
-        <Text label="地域別最低賃金（円）※令和8年度の改定後の額" type="number" value={form.regionalMinWage} onChange={(v) => set("regionalMinWage", num(v))} />
+        <label className="block text-sm">
+          <span className="text-slate-600">地域別最低賃金（円）※令和8年度の改定後の額</span>
+          <input
+            type="number"
+            value={form.regionalMinWage}
+            readOnly={!!selectedWage}
+            onChange={(e) => set("regionalMinWage", num(e.target.value))}
+            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 read-only:bg-slate-100"
+          />
+          {selectedWage ? (
+            <span className="mt-1 block text-xs text-slate-500">
+              {form.prefecture}の公式の額を自動で入れています（改定前 {selectedWage.r7.toLocaleString()}円／発効予定日 {reiwa(selectedWage.effective)}）
+            </span>
+          ) : (
+            <span className="mt-1 block text-xs text-amber-700">都道府県を選ぶと、公式の額が自動で入ります</span>
+          )}
+        </label>
         <Text label="A 正規社員数" type="number" value={form.regularStaffCount} onChange={(v) => set("regularStaffCount", num(v))} />
         <Text label="B 雇用保険加入の無期契約労働者数" type="number" value={form.permanentInsuredCount} onChange={(v) => set("permanentInsuredCount", num(v))} />
         <Text label="C 雇用保険加入の有期契約労働者数" type="number" value={form.fixedTermInsuredCount} onChange={(v) => set("fixedTermInsuredCount", num(v))} />

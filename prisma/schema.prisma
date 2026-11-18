@@ -29,6 +29,10 @@ model Diagnosis {
   industryCategory String // 中小企業判定用の業種区分
   orgType          String // "法人" | "個人事業"
   capitalYen       Int      @default(0) // 資本金額（中小企業判定用）
+  prefecture       String? // 申請事業場の都道府県（地域別最低賃金・業務改善助成金の申請期限の判定用）
+  establishmentEmployeeCount Int @default(0) // 申請する事業場の常時使用労働者数（0=未入力。業務改善助成金の「事業場規模30人未満」の判定用）
+  deemedLargeEnterprise      Boolean @default(false) // みなし大企業に該当（業務改善助成金は対象外）
+  priceSurgeRequirement      Boolean @default(false) // 物価高騰等要件に該当（特例事業者）
   contactName      String? // ご担当者名
   contactTel       String? // 連絡先TEL
   contactEmail     String? // メールアドレス

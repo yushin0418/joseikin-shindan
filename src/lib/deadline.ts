@@ -47,6 +47,31 @@ export function daysUntil(dateIso: string, now: Date): number {
   return dayNumber(dateIso) - dayNumber(jstDate(now));
 }
 
+/** ISO 日付に日数を足す（UTC の暦日計算。夏時間の影響を受けない） */
+export function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** 土日または指定の休日か（行政機関の閉庁日） */
+export function isClosedDay(iso: string, closedDays: Set<string>): boolean {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=日, 6=土
+  return dow === 0 || dow === 6 || closedDays.has(iso);
+}
+
+/** 末日が閉庁日なら前開庁日に繰り上げる（業務改善助成金Q&A問50：行政機関の休日の場合はその前開庁日） */
+export function prevBusinessDay(iso: string, closedDays: Set<string>): string {
+  let cur = iso;
+  while (isClosedDay(cur, closedDays)) cur = addDays(cur, -1);
+  return cur;
+}
+
+/** 2つの ISO 日付のうち早い方 */
+export function earlierDate(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
 /** 2026-11-30 → 令和8年11月30日（令和元年=2019 のみ「元」） */
 export function formatReiwa(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
