@@ -12,13 +12,21 @@ export interface Criteria {
     fiscalYear: string;
     source: string;
     minRaiseYen: number;
+    /** 助成対象経費の下限（税抜） */
+    minEligibleCostYen: number;
     rate: { boundaryYen: number; below: number; atOrAbove: number };
     smallEmployerMaxEmployees: number;
     smeMaxRegularEmployeesByCategory: Record<string, number>;
     smeMaxCapitalByCategory: Record<string, number>;
     courses: Record<
       string,
-      { label: string; minRaise: number; caps: { maxHc: number; normal: number; small: number }[] }
+      {
+        label: string;
+        minRaise: number;
+        caps: { maxHc: number; normal: number; small: number }[];
+        /** 「10人以上」の上限額区分。特例事業者（事業場内最賃1,050円未満 等）が10人以上を引き上げる場合のみ */
+        tenPlus: number;
+      }
     >;
     requiredDocs: string[];
   };
@@ -30,6 +38,8 @@ export interface Criteria {
     subsidyRate: number;
     subsidyRateSmall: number;
     goal1CapsByType: Record<string, number>;
+    /** 交付額の端数切捨て単位（交付要綱第6条：1,000円未満切捨て） */
+    roundingYen: number;
     goal2Cap: number;
     goal3Cap: number;
     requiredDocs: string[];

@@ -54,9 +54,9 @@ const base: DiagnosisInput = {
   plannedWageRaise: 90,
   wageRaiseHeadcount: 8,
   retirementSystem: "",
-  hasBonus: false,
-  bonusSummer: "",
-  bonusWinter: "",
+  hasBonus: true, // 正社員化コースは「賞与または退職金」かつ「昇給」が要件
+  bonusSummer: "6月",
+  bonusWinter: "12月",
   hasRetirementAllowance: false,
   willInvestEquipment: true,
   equipmentName: "設備",

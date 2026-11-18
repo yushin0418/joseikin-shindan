@@ -320,7 +320,7 @@ export function DiagnoseForm() {
       <Section title="従業員（全体 = A+B+C+D）">
         <Text label="従業員数（全体）" type="number" value={form.employeeCount} onChange={(v) => set("employeeCount", num(v))} />
         <Text label="会社内の最低賃金（円）" type="number" value={form.inHouseMinWage} onChange={(v) => set("inHouseMinWage", num(v))} />
-        <Text label="地域別最低賃金（円）" type="number" value={form.regionalMinWage} onChange={(v) => set("regionalMinWage", num(v))} />
+        <Text label="地域別最低賃金（円）※令和8年度の改定後の額" type="number" value={form.regionalMinWage} onChange={(v) => set("regionalMinWage", num(v))} />
         <Text label="A 正規社員数" type="number" value={form.regularStaffCount} onChange={(v) => set("regularStaffCount", num(v))} />
         <Text label="B 雇用保険加入の無期契約労働者数" type="number" value={form.permanentInsuredCount} onChange={(v) => set("permanentInsuredCount", num(v))} />
         <Text label="C 雇用保険加入の有期契約労働者数" type="number" value={form.fixedTermInsuredCount} onChange={(v) => set("fixedTermInsuredCount", num(v))} />
@@ -383,7 +383,7 @@ export function DiagnoseForm() {
         <Check label="設備導入予定あり" checked={form.willInvestEquipment} onChange={(v) => set("willInvestEquipment", v)} />
         <div />
         <Text label="設備名" value={form.equipmentName} onChange={(v) => set("equipmentName", v)} />
-        <Text label="設備価格（円）" type="number" value={form.equipmentPrice} onChange={(v) => set("equipmentPrice", num(v))} />
+        <Text label="設備価格（円・税抜）" type="number" value={form.equipmentPrice} onChange={(v) => set("equipmentPrice", num(v))} />
         <Text label="購入先" value={form.equipmentVendor} onChange={(v) => set("equipmentVendor", v)} />
         <Text label="導入目的" value={form.equipmentPurpose} onChange={(v) => set("equipmentPurpose", v)} />
         <Text label="生産性向上効果" value={form.productivityEffect} onChange={(v) => set("productivityEffect", v)} />
@@ -407,7 +407,7 @@ export function DiagnoseForm() {
         <Text label="60歳以上の雇用保険加入者数" type="number" value={form.over60Insured} onChange={(v) => set("over60Insured", num(v))} />
         <Text label="50歳以上の有期契約労働者数" type="number" value={form.over50FixedTerm} onChange={(v) => set("over50FixedTerm", num(v))} />
         <div />
-        <Check label="過去3年間、助成金の不正受給はない" checked={form.noFraudPast3y} onChange={(v) => set("noFraudPast3y", v)} />
+        <Check label="過去5年間、助成金の不正受給はない" checked={form.noFraudPast3y} onChange={(v) => set("noFraudPast3y", v)} />
         <Check label="過去1年間、労働関係法令の違反はない" checked={form.noLaborLawViolation} onChange={(v) => set("noLaborLawViolation", v)} />
       </Section>
 
